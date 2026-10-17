@@ -1,0 +1,23 @@
+name: Windows build
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-dotnet@v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore RackTrail.slnx
+      - name: Build
+        run: dotnet build RackTrail.slnx -c Release --no-restore
+      - name: Core checks
+        run: dotnet run --project tests/RackTrail.Tests -c Release --no-build
+      - name: Native workflow checks
+        run: dotnet run --project src/RackTrail.Desktop -c Release --no-build -- --smoke-test artifacts/ci-smoke

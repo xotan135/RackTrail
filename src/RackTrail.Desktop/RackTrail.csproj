@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>RackTrail</AssemblyName>
+    <RootNamespace>RackTrail.Desktop</RootNamespace>
+    <Product>RackTrail</Product>
+    <Title>RackTrail</Title>
+    <Description>RackTrail network map studio</Description>
+    <Version>1.5.0</Version>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/RackTrail.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../RackTrail.Core/RackTrail.Core.csproj"/>
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.21"/>
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.21"/>
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.21"/>
+    <AvaloniaResource Include="Assets/**"/>
+    <EmbeddedResource Include="../../CHANGELOG.md" LogicalName="RackTrail.Desktop.CHANGELOG.md" />
+  </ItemGroup>
+</Project>
