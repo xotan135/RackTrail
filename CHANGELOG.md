@@ -1,5 +1,9 @@
 # Version history
 
+## Unreleased
+
+- License RackTrail under MIT and include its license in Windows distributions.
+
 ## 1.6.0 — 2026-10-17
 
 - Text export now defaults to a spatial map, preserving relative device positions, side-by-side subnet groups, nested containers and collapsed state.

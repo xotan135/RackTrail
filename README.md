@@ -185,3 +185,10 @@ Drag selected nodes by the blue bottom-right handle to resize them, or drag the 
 Add a Hypervisor (default Hyper-V), then use **Add virtual machine** or assign a VM through its Hypervisor host selector. This creates a hosting link and places it inside the host. Network connections can be added separately. VM container membership can also be changed to a subnet while retaining its host relationship.
 
 RackTrail starts with an empty map and asks whether to load the sample. **Don't ask again** suppresses that prompt on future launches; it always starts blank unless you explicitly restore recovery. **Load sample network** remains available in the Properties panel when nothing is selected.
+
+
+## License
+
+RackTrail is licensed under the [MIT License](LICENSE).
+
+Copyright (c) 2026 John Turner. Third-party components retain their own licenses and notices; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and the [licenses](licenses) directory.

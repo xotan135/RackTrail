@@ -9,6 +9,7 @@ if ($taskIconGenerator.ExitCode -ne 0) { throw 'Icon generation failed.' }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'README.md') -Destination $releaseFolder
 Copy-Item -LiteralPath (Join-Path $taskRoot 'CHANGELOG.md') -Destination $releaseFolder
 Copy-Item -LiteralPath (Join-Path $taskRoot 'THIRD-PARTY-NOTICES.md') -Destination $releaseFolder
+Copy-Item -LiteralPath (Join-Path $taskRoot 'LICENSE') -Destination $releaseFolder
 Copy-Item -LiteralPath (Join-Path $taskRoot 'licenses') -Destination $releaseFolder -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs') -Destination $releaseFolder -Recurse -Force
 $taskSample = Join-Path $taskRoot 'samples'
