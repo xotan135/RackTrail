@@ -7,6 +7,7 @@ namespace RackTrail.Desktop;
 
 public static class BrandUiChecks
 {
+    public static bool EmbeddedImageGuardVerified { get; private set; }
     public static bool Completed { get; private set; }
     public static void Run(string directory)
     {
@@ -37,6 +38,13 @@ public static class BrandUiChecks
         textWindow.Show();Avalonia.Threading.Dispatcher.UIThread.RunJobs();textWindow.UpdateLayout();
         using(var textBitmap=new RenderTargetBitmap(new PixelSize(1500,1300),new Vector(96,96))){textBitmap.Render(textWindow);textBitmap.Save(Path.Combine(directory,"text-export.png"));}
         textWindow.Close();
+        var unsafePng=Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZSkAAAAASUVORK5CYII=");
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(unsafePng.AsSpan(16,4),100000);
+        var unsafeNode=new RackTrail.Core.Node{IconKey="oversized",EmbeddedIconKey="oversized",IconPngBase64=Convert.ToBase64String(unsafePng)};
+        if(RackTrail.Core.DeviceIcons.EmbeddedPng(unsafeNode)!=null)throw new InvalidOperationException("Unsafe image reached renderer.");
+        var safeDrawing=new DrawingGroup();using(var drawing=safeDrawing.Open())
+            if(DeviceIconRenderer.Draw(drawing,unsafeNode,new Rect(0,0,16,16)))throw new InvalidOperationException("Avalonia accepted oversized embedded image.");
+        EmbeddedImageGuardVerified=true;
         Completed = true;
     }
 }

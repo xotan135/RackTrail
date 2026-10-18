@@ -21,7 +21,7 @@ public sealed class IconLibrary
                 {
                     if(new FileInfo(file).Length>4*1024*1024)throw new InvalidDataException("Maximum icon file size is 4 MB.");
                     using var data=SKData.CreateCopy(File.ReadAllBytes(file));using var codec=SKCodec.Create(data);
-                    if(codec==null||codec.Info.Width>2048||codec.Info.Height>2048)throw new InvalidDataException("Use a valid image no larger than 2048 × 2048.");
+                    if(codec==null||!ImageLimits.Allows(codec.Info.Width,codec.Info.Height,Math.Max(4,codec.Info.BytesPerPixel)))throw new InvalidDataException("Use a valid image no larger than 2048 × 2048.");
                     using var bitmap=SKBitmap.Decode(data);if(bitmap==null)throw new InvalidDataException("Image could not be decoded.");
                     using var thumbnail=new SKBitmap(128,128);using var canvas=new SKCanvas(thumbnail);canvas.Clear(SKColors.Transparent);
                     float scale=Math.Min(128f/bitmap.Width,128f/bitmap.Height);float w=bitmap.Width*scale,h=bitmap.Height*scale;

@@ -112,16 +112,15 @@ public static class ProjectStorage
     {
         var p = JsonSerializer.Deserialize<Project>(text, Options) ?? throw new InvalidDataException("Empty project.");
         if (p.FormatVersion != 1) throw new InvalidDataException("Unsupported project version.");
-        if (p.Nodes.Select(n => n.Id).Distinct().Count() != p.Nodes.Count) throw new InvalidDataException("Duplicate node identifiers.");
+        ProjectLimits.ValidateHierarchy(p);
+        var byId=p.Nodes.ToDictionary(n=>n.Id,StringComparer.Ordinal);
         foreach (var n in p.Nodes)
         {
             if (!double.IsFinite(n.X + n.Y + n.Width + n.Height) || n.Width < 30 || n.Height < 30) throw new InvalidDataException("Invalid node geometry.");
-            if (n.ParentId is { } id && !p.Nodes.Any(x => x.Id == id && x.CanContainNodes)) throw new InvalidDataException("Missing container.");
-            if(n.HostId is {} hostId&&(!p.Nodes.Any(x=>x.Id==hostId&&x.Kind==NodeKind.Hypervisor)||n.Kind!=NodeKind.VirtualMachine))throw new InvalidDataException("Invalid virtual machine host.");
-            var seen = new HashSet<string> { n.Id }; var cur = n;
-            while (cur.ParentId is { } parent) { if (!seen.Add(parent)) throw new InvalidDataException("Container cycle."); cur = p.Nodes.First(x => x.Id == parent); }
+
+            if(n.HostId is {} hostId&&((!byId.TryGetValue(hostId,out var host)||host.Kind!=NodeKind.Hypervisor)||n.Kind!=NodeKind.VirtualMachine))throw new InvalidDataException("Invalid virtual machine host.");
         }
-        if (p.Connections.Any(c => !p.Nodes.Any(n => n.Id == c.From) || !p.Nodes.Any(n => n.Id == c.To))) throw new InvalidDataException("Missing connection endpoint.");
+        if (p.Connections.Any(c => !byId.ContainsKey(c.From) || !byId.ContainsKey(c.To))) throw new InvalidDataException("Missing connection endpoint.");
         return p;
     }
     public static Project Clone(Project p) => Deserialize(Serialize(p));

@@ -20,7 +20,18 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     public string Status { get; set; } = "Ready · Drag devices to move · Scroll to zoom · Middle-drag to pan";
     public void Notify() { PropertyChanged?.Invoke(this, new(null)); Changed?.Invoke(); }
     public void Checkpoint() { undo.Push(ProjectStorage.Serialize(Project)); redo.Clear(); Dirty = true; }
-    public void Edit(Action action) { Checkpoint(); action(); Containment.Repair(Project);Notify(); }
+    public void Edit(Action action)
+    {
+        var before=ProjectStorage.Serialize(Project);bool wasDirty=Dirty;var selection=Selection.ToArray();var connectionId=SelectedConnection?.Id;
+        try{action();Containment.Repair(Project);}
+        catch
+        {
+            Project=ProjectStorage.Deserialize(before);Selection.Clear();foreach(var id in selection)Selection.Add(id);
+            SelectedConnection=Project.Connections.Find(c=>c.Id==connectionId);Dirty=wasDirty;RefreshDetails();throw;
+        }
+        undo.Push(before);redo.Clear();Dirty=true;Notify();
+    }
+    public void RunUserAction(Action action) { try { action(); } catch(InvalidDataException ex) { Status=ex.Message;Notify(); } }
     public void RefreshDetails(){PropertiesRevision++;Notify();}
     public void Touch() { Dirty = true; Notify(); }
     public void Replace(Project p, string? path = null) { var before=ProjectStorage.Serialize(p);Containment.Repair(p);Project = p; FilePath = path; Selection.Clear(); SelectedConnection = null; ConnectMode = false; ConnectFrom = null; undo.Clear(); redo.Clear(); Dirty = before!=ProjectStorage.Serialize(p); Notify(); }

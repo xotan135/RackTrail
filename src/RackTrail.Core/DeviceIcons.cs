@@ -71,6 +71,6 @@ public static class DeviceIcons
     {
         var key=ResolveKey(node);
         if(node.IconPngBase64.Length==0 || node.IconPngBase64.Length>2*1024*1024 || !key.Equals(node.EmbeddedIconKey,StringComparison.OrdinalIgnoreCase))return null;
-        try{return Convert.FromBase64String(node.IconPngBase64);}catch(FormatException){return null;}
+        try{var bytes=Convert.FromBase64String(node.IconPngBase64);return ImageLimits.AllowsPng(bytes)?bytes:null;}catch(FormatException){return null;}
     }
 }

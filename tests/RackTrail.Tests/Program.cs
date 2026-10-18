@@ -52,7 +52,8 @@ Assert(DeviceIcons.ResolveKey(new(){Vendor="Cisco Systems"})=="cisco","Vendor ic
 Assert(DeviceIcons.ResolveKey(new(){Vendor="Cisco",OperatingSystem="Windows",IconKey="linux"})=="linux"&&DeviceIcons.ResolveKey(new(){Vendor="Cisco",IconKey="device"})=="device","Manual icon override and standard icon choice");
 Assert(DeviceIcons.ResolveKey(new(){Vendor="Unknown vendor"})=="device","Unknown vendor falls back to standard icon");
 foreach(var key in DeviceIcons.BuiltInKeys)Assert(DeviceIcons.Vector(key)?.Paths.Count>0,"Bundled vector available: "+key);
-var portable=new Node{Kind=NodeKind.Printer,Vendor="Acme Corp",OperatingSystem="Windows",EmbeddedIconKey="acme",IconPngBase64=Convert.ToBase64String(new byte[]{1,2,3})};Assert(DeviceIcons.ResolveKey(portable)=="acme"&&DeviceIcons.EmbeddedPng(portable)!.SequenceEqual(new byte[]{1,2,3}),"Embedded custom vendor choice takes precedence over OS after moving project");
+var portablePng=Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZSkAAAAASUVORK5CYII=");
+var portable=new Node{Kind=NodeKind.Printer,Vendor="Acme Corp",OperatingSystem="Windows",EmbeddedIconKey="acme",IconPngBase64=Convert.ToBase64String(portablePng)};Assert(DeviceIcons.ResolveKey(portable)=="acme"&&DeviceIcons.EmbeddedPng(portable)!.SequenceEqual(portablePng),"Embedded custom vendor choice takes precedence over OS after moving project");
 portable.IconKey="device";Assert(DeviceIcons.EmbeddedPng(portable)==null,"Stale embedded icon does not override standard choice");
 printerProject.Nodes.Last().IconKey="hp";Assert(VisualExporter.Svg(printerProject).Contains("data-device-icon=\"hp\""),"SVG contains selected vendor vector icon");
 
@@ -123,4 +124,44 @@ Assert(memberDiagram.First(l=>l.Contains("02 Second member"))[stackRight]=='+',"
 var hostedSpatial=new Project{Nodes=[new(){Id="h",Kind=NodeKind.Hypervisor,Name="Hyper-V",Width=460,Height=240},new(){Id="g",Kind=NodeKind.VirtualMachine,Name="Guest",ParentId="h",X=20,Y=70}],Connections=[new(){From="h",To="g",Kind=ConnectionKind.Hosting}]};
 var hostedText=TextExporter.Export(hostedSpatial,new());
 Assert(hostedText.Contains("[hosting]")&&!hostedText.Contains("[route not drawn]"),"Hosting links render inside the host container");
+var excessiveDepth=new Project{Nodes=Enumerable.Range(0,65).Select(i=>new Node{Id="depth-"+i,Kind=NodeKind.Site,ParentId=i==0?null:"depth-"+(i-1)}).ToList()};
+bool depthBlocked=false;try{ProjectStorage.Deserialize(ProjectStorage.Serialize(excessiveDepth));}catch(InvalidDataException){depthBlocked=true;}
+var tinyIcon=Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZSkAAAAASUVORK5CYII=");
+var oversizedIcon=(byte[])tinyIcon.Clone();System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(oversizedIcon.AsSpan(16,4),100000);System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(oversizedIcon.AsSpan(20,4),100000);
+var maliciousIcon=new Node{IconKey="oversized",EmbeddedIconKey="oversized",IconPngBase64=Convert.ToBase64String(oversizedIcon)};
+bool imageBlocked=DeviceIcons.EmbeddedPng(maliciousIcon)==null;
+Console.WriteLine($"Boundary reproduction: excessive depth blocked={depthBlocked}; oversized embedded image blocked={imageBlocked}");
+Assert(depthBlocked,"Deep acyclic project is rejected before containment repair");
+Assert(imageBlocked,"Compact image with huge dimensions is rejected before native decoding");
+Project Chain(int count)=>new(){Nodes=Enumerable.Range(0,count).Select(i=>new Node{Id="chain-"+i,Kind=NodeKind.Site,ParentId=i==0?null:"chain-"+(i-1)}).ToList()};
+bool RejectsProject(Project value){try{ProjectStorage.Deserialize(ProjectStorage.Serialize(value));return false;}catch(InvalidDataException){return true;}}
+var boundaryChain=Chain(ProjectLimits.MaximumContainmentDepth+1);boundaryChain.Nodes.Reverse();
+var boundaryLoaded=ProjectStorage.Deserialize(ProjectStorage.Serialize(boundaryChain));Containment.Repair(boundaryLoaded);
+Assert(boundaryLoaded.Nodes.All(n=>n.ParentId==null||Containment.IsInside(n,boundaryLoaded.Nodes.Find(p=>p.Id==n.ParentId)!)),"Reverse-ordered chain at depth limit repairs iteratively with all descendants inside");
+Assert(RejectsProject(Chain(ProjectLimits.MaximumContainmentDepth+2)),"A chain one parent link over the limit is rejected");
+var broadProject=new Project{Nodes=Enumerable.Range(0,ProjectLimits.MaximumNodes).Select(i=>new Node{Id="broad-"+i,Kind=i==0?NodeKind.Site:NodeKind.Device,ParentId=i==0?null:"broad-0"}).ToList()};
+var broadLoaded=ProjectStorage.Deserialize(ProjectStorage.Serialize(broadProject));Containment.Repair(broadLoaded);
+Assert(broadLoaded.Nodes.Count==ProjectLimits.MaximumNodes&&broadLoaded.Nodes.Skip(1).All(n=>Containment.IsInside(n,broadLoaded.Nodes[0])),"Broad shallow project at node limit loads and repairs");
+broadProject.Nodes.Add(new(){Id="over-node-limit"});
+Assert(RejectsProject(broadProject),"A project one node over the budget is rejected");
+var directCycle=Chain(2);directCycle.Nodes[0].ParentId=directCycle.Nodes[1].Id;string cycleBefore=ProjectStorage.Serialize(directCycle);
+bool directCycleBlocked=false;try{Containment.Repair(directCycle);}catch(InvalidDataException){directCycleBlocked=true;}
+Assert(directCycleBlocked&&ProjectStorage.Serialize(directCycle)==cycleBefore,"Direct in-memory cycle is rejected before repair changes geometry");
+var reparent=Chain(ProjectLimits.MaximumContainmentDepth+1);var branch=new Node{Id="branch",Kind=NodeKind.Site};var leaf=new Node{Id="branch-leaf",ParentId=branch.Id,Kind=NodeKind.Device};reparent.Nodes.AddRange([branch,leaf]);
+bool branchBlocked=false;try{Containment.Assign(reparent,branch,"chain-"+(ProjectLimits.MaximumContainmentDepth-1));}catch(InvalidDataException){branchBlocked=true;}
+Assert(branchBlocked&&branch.ParentId==null,"Reparenting checks the full descendant depth before changing membership");
+Containment.Assign(reparent,branch,"chain-"+(ProjectLimits.MaximumContainmentDepth-2));
+Assert(ProjectLimits.ValidateHierarchy(reparent)[leaf.Id]==ProjectLimits.MaximumContainmentDepth,"Valid subtree assignment at the exact depth limit still works");
+Assert(ImageLimits.Allows(2048,2048)&&!ImageLimits.Allows(2048,2048,8)&&!ImageLimits.Allows(long.MaxValue,2),"Decoded pixel budget accepts its exact limit without overflow");
+foreach(var dimensions in new[]{(0u,1u),(1u,0u),(2049u,1u),(1u,2049u),(uint.MaxValue,uint.MaxValue)}){
+var header=(byte[])tinyIcon.Clone();System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(header.AsSpan(16,4),dimensions.Item1);System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(header.AsSpan(20,4),dimensions.Item2);
+maliciousIcon.IconPngBase64=Convert.ToBase64String(header);
+Assert(DeviceIcons.EmbeddedPng(maliciousIcon)==null,"Invalid or excessive image dimensions rejected: "+dimensions);
+}
+var highDepth=(byte[])tinyIcon.Clone();System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(highDepth.AsSpan(16,4),2048);System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(highDepth.AsSpan(20,4),2048);highDepth[24]=16;highDepth[25]=6;
+Assert(!ImageLimits.AllowsPng(highDepth),"High bit-depth PNG is rejected when decoded-byte budget is exceeded");
+maliciousIcon.IconPngBase64=Convert.ToBase64String(tinyIcon[..24]);Assert(DeviceIcons.EmbeddedPng(maliciousIcon)==null,"Truncated PNG metadata rejected");
+maliciousIcon.IconPngBase64="not base64!";Assert(DeviceIcons.EmbeddedPng(maliciousIcon)==null,"Malformed base64 keeps safe fallback behavior");
+maliciousIcon.IconPngBase64=Convert.ToBase64String(oversizedIcon);Assert(!VisualExporter.Svg(new(){Nodes=[maliciousIcon]}).Contains("data:image"),"SVG does not forward an oversized embedded image");
+maliciousIcon.IconPngBase64=Convert.ToBase64String(tinyIcon);Assert(DeviceIcons.EmbeddedPng(maliciousIcon)!.SequenceEqual(tinyIcon),"Valid small embedded PNG remains portable and byte-preserving");
 Console.WriteLine($"\n{checks} checks passed.");

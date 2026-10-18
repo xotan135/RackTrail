@@ -69,6 +69,20 @@ public static class SmokeTests
         Check(discoveryVm.Project.Nodes.Count==2&&discoveryVm.Project.Nodes.All(n=>n.Kind==NodeKind.Device),"Review import creates generic device cards without inferred connections");
         discoveryVm.Undo();Check(discoveryVm.Project.Nodes.Count==0,"One undo removes the entire discovery import");
         discoveryVm.Redo();Check(discoveryVm.Project.Nodes.Count==2&&discoveryVm.Project.Nodes.First().Hostname=="test-device","Redo restores discovered addresses and hostnames");
+        var boundedVm=new EditorViewModel();var safeDevice=boundedVm.Add(NodeKind.Device);boundedVm.Saved();var beforeInvalidEdit=ProjectStorage.Serialize(boundedVm.Project);
+        bool rejectedEdit=false;try{boundedVm.Edit(()=>{for(int i=0;i<ProjectLimits.MaximumNodes;i++)boundedVm.Project.Nodes.Add(new(){Id="too-many-"+i});});}catch(InvalidDataException){rejectedEdit=true;}
+        Check(rejectedEdit&&!boundedVm.Dirty&&ProjectStorage.Serialize(boundedVm.Project)==beforeInvalidEdit&&boundedVm.Selected?.Id==safeDevice.Id,"Rejected over-budget edit rolls back project, dirty flag and selection");
+        var limitPaste=new Project{Nodes=Enumerable.Range(0,ProjectLimits.MaximumNodes).Select(i=>new Node{Id="paste-"+i,Kind=NodeKind.Device}).ToList()};
+        boundedVm.Replace(limitPaste);boundedVm.Select(limitPaste.Nodes[0]);boundedVm.Copy();bool pasteBlocked=false;
+        try{boundedVm.Paste();}catch(InvalidDataException){pasteBlocked=true;}
+        Check(pasteBlocked&&boundedVm.Project.Nodes.Count==ProjectLimits.MaximumNodes,"Paste cannot leave an over-budget project in memory");
+        var unsafePng=File.ReadAllBytes(Path.Combine(iconsFolder,"windows.png"));System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(unsafePng.AsSpan(16,4),100000);
+        var unsafeNode=new Node{IconKey="oversized",EmbeddedIconKey="oversized",IconPngBase64=Convert.ToBase64String(unsafePng)};
+        Check(DeviceIcons.EmbeddedPng(unsafeNode)==null,"Oversized embedded PNG is stopped at shared boundary before renderer checks");
+        using(var safeBitmap=new SKBitmap(32,32)){using var safeCanvas=new SKCanvas(safeBitmap);Check(!DeviceIconRenderer.Draw(safeCanvas,unsafeNode,new SKRect(0,0,16,16)),"Skia renderer refuses oversized embedded PNG");}
+        Check(BrandUiChecks.EmbeddedImageGuardVerified,"Avalonia renderer refuses oversized embedded PNG");
+        boundedVm.RunUserAction(boundedVm.Paste);Check(boundedVm.Project.Nodes.Count==ProjectLimits.MaximumNodes&&boundedVm.Status.Contains("2000"),"User paste rejects excess nodes with a message");
+        boundedVm.RunUserAction(()=>boundedVm.Add(NodeKind.Device));Check(boundedVm.Project.Nodes.Count==ProjectLimits.MaximumNodes&&!boundedVm.Dirty,"User add rejects excess nodes without unhandled exception or dirtying map");
         Console.WriteLine($"{count} desktop workflow checks passed.");
     }
 }
