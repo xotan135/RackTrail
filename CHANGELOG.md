@@ -1,10 +1,9 @@
 # Version history
 
-## Unreleased
+## 1.6.1 — 2026-10-18
 
 - Bound project node counts and container depth, repair containment iteratively, and roll back rejected edits.
 - Reject embedded PNGs exceeding dimension or decoded-memory limits before rendering or SVG embedding.
-
 - License RackTrail under MIT and include its license in Windows distributions.
 
 ## 1.6.0 — 2026-10-17
