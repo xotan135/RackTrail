@@ -17,9 +17,9 @@ broken.Nodes.Find(n => n.Id == "app")!.AllowValidationExceptions = true; Assert(
 var ipv6 = new Project { Nodes = [new() { Id = "net", Kind = NodeKind.Subnet, Cidr = "2001:db8::/64" }, new() { Id = "dev", Kind = NodeKind.Server, ParentId = "net", Addresses = "2001:db8::1" }] }; Assert(NetworkValidator.Validate(ipv6).Count == 0, "IPv6 device subnet validation");
 foreach (int width in new[] { 80, 120, 160 }) foreach (bool unicode in new[] { false, true })
 {
-    var options = new TextExportOptions(Width: width, Unicode: unicode, WindowsLineEndings: false); var export = TextExporter.Export(sample, options); var lines = export.Split('\n');
+    var options = new TextExportOptions(Width: width, Unicode: unicode, WindowsLineEndings: false); var export = TextExporter.Outline(sample, options); var lines = export.Split('\n');
     Assert(lines.All(l => l.Length <= width), $"{width} column width / unicode={unicode}");
-    Assert(export == TextExporter.Export(sample, options), "Deterministic text export");
+    Assert(export == TextExporter.Outline(sample, options), "Deterministic text export");
     Assert(unicode || export.All(c => c <= 127), "Strict ASCII character contract");
     var borderWidths = new Dictionary<int, int>(); bool aligned = true; int boxCount = 0; foreach (var line in lines) { var trimmed = line.TrimStart(); int indent = line.Length - trimmed.Length; if (trimmed.StartsWith(unicode ? "┌" : "+") && trimmed.Contains(unicode ? '─' : '-')) { borderWidths[indent] = line.Length; boxCount++; } else if (trimmed.StartsWith(unicode ? "└" : "+") && trimmed.Contains(unicode ? '─' : '-') || trimmed.StartsWith(unicode ? "│" : "|") && line.EndsWith(unicode ? "│" : "|") && trimmed.Length > 1) aligned &= borderWidths.TryGetValue(indent, out int expected) && line.Length == expected; }
     Assert(boxCount > 0 && aligned, "Box borders and content align at configured width");
@@ -27,8 +27,8 @@ foreach (int width in new[] { 80, 120, 160 }) foreach (bool unicode in new[] { f
     foreach (var c in sample.Connections) { var a = sample.Nodes.First(n => n.Id == c.From); var b = sample.Nodes.First(n => n.Id == c.To); Assert(ledger.Any(block=>block.Contains(a.Name)&&block.Contains(b.Name)&&block.Contains(c.Purpose)), "Connection endpoint and label represented together: " + c.From + " -> " + c.To); }
     Assert(export.Contains("HEADQUARTERS") && export.Contains("Server subnet") && export.Contains("10.10.10.0/24"), "Site / subnet hierarchy exported");
 }
-var longProject = ProjectStorage.Clone(sample); longProject.Nodes[0].Name = new string('é', 300); Assert(TextExporter.Export(longProject, new(80)).Split('\n').All(l => l.TrimEnd('\r').Length <= 80), "Unsupported and oversized labels wrap predictably");
-Assert(!Regex.IsMatch(TextExporter.Export(sample, new(WindowsLineEndings: true)), "(?<!\\r)\\n"), "Windows line endings");
+var longProject = ProjectStorage.Clone(sample); longProject.Nodes[0].Name = new string('é', 300); Assert(TextExporter.Outline(longProject, new(80)).Split('\n').All(l => l.TrimEnd('\r').Length <= 80), "Unsupported and oversized labels wrap predictably");
+Assert(!Regex.IsMatch(TextExporter.Outline(sample, new(WindowsLineEndings: true)), "(?<!\\r)\\n"), "Windows line endings");
 Assert(TextExporter.Markdown(sample, new()).StartsWith("```text\r\n"), "Markdown fenced export");
 var svg = VisualExporter.Svg(sample); Assert(svg.Contains("<polyline") && svg.Contains("10.10.10.10") && svg.Contains("xmlns="), "SVG includes connections and device metadata");
 var collapse = ProjectStorage.Clone(sample); collapse.Nodes.Find(n => n.Id == "hq")!.Collapsed = true; Assert(!collapse.Visible(collapse.Nodes.Find(n => n.Id == "ad")!) && collapse.VisibleEndpoint("ad")!.Id == "hq", "Nested collapse reroutes connection endpoints");
@@ -43,11 +43,11 @@ Assert(NetworkValidator.Validate(stacked).Count==0,"Five members share one manag
 stack.StackMembers[2].Number=7;Assert(stackLink.LabelFor(stacked).Contains("member 7")&&stackLink.FromStackMemberId=="member-3","Member renumbering preserves physical connection identity");
 var invalidStack=ProjectStorage.Clone(stacked);invalidStack.Nodes.Find(n=>n.Id=="core")!.StackMembers[2].Number=1;Assert(NetworkValidator.Validate(invalidStack).Any(i=>i.Message.Contains("duplicate stack member number")),"Duplicate member numbers are detected");
 invalidStack.Connections.First(c=>c.Id==stackLink.Id).FromStackMemberId="missing";Assert(NetworkValidator.Validate(invalidStack).Any(i=>i.Message.Contains("missing stack member")),"Stale member connection references are detected");
-foreach(var unicode in new[]{false,true}){var exported=TextExporter.Export(stacked,new(80,unicode,WindowsLineEndings:false));Assert(exported.Contains("5 members")&&exported.Contains("SERIAL3")&&exported.Contains("Gi3/0/24")&&exported.Contains("member 7"),"Stack inventory and port-specific links appear in detailed export");Assert(exported.Split('\n').All(l=>l.Length<=80),"Stack details respect export column limit");var overview=TextExporter.Export(stacked,new(80,unicode,Detailed:false));Assert(overview.Contains("5 members")&&!overview.Contains("SERIAL3"),"Stack overview summarizes member inventory");}
+foreach(var unicode in new[]{false,true}){var exported=TextExporter.Outline(stacked,new(80,unicode,WindowsLineEndings:false));Assert(exported.Contains("5 members")&&exported.Contains("SERIAL3")&&exported.Contains("Gi3/0/24")&&exported.Contains("member 7"),"Stack inventory and port-specific links appear in detailed export");Assert(exported.Split('\n').All(l=>l.Length<=80),"Stack details respect export column limit");var overview=TextExporter.Outline(stacked,new(80,unicode,Detailed:false));Assert(overview.Contains("5 members")&&!overview.Contains("SERIAL3"),"Stack overview summarizes member inventory");}
 stack.ShowStackMembers=true;Assert(VisualExporter.Svg(stacked).Contains("Physical switch 3"),"SVG includes expanded stack members");var memberRoute=MapLayout.Route(stacked,stackLink);Assert(memberRoute[0].Y==stack.Y+78+24*4,"Expanded connections route to their physical member row");
 stack.ShowStackMembers=false;Assert(!VisualExporter.Svg(stacked).Contains("Physical switch 3"),"Collapsed stack remains a single visual device");
 var printer=new Node{Id="printer",Kind=NodeKind.Printer,Name="Office printer",Vendor="HP",Addresses="10.10.20.50",ParentId="users"};var printerProject=ProjectStorage.Clone(sample);printerProject.Nodes.Add(printer);printerProject.Connections.Add(new(){From="core",To=printer.Id,Purpose="Printing"});Assert(!printer.IsContainer&&ProjectStorage.Clone(printerProject).Nodes.Last().Kind==NodeKind.Printer,"Printer is a serializable connectable device, not a container");
-Assert(NetworkValidator.Validate(printerProject).Count==0&&TextExporter.Export(printerProject,new()).Contains("Office printer / Printer"),"Printer participates in subnet validation and text export");
+Assert(NetworkValidator.Validate(printerProject).Count==0&&TextExporter.Outline(printerProject,new()).Contains("Office printer / Printer"),"Printer participates in subnet validation and text export");
 Assert(DeviceIcons.ResolveKey(new(){Vendor="Cisco Systems"})=="cisco","Vendor icon automatic matching");Assert(DeviceIcons.ResolveKey(new(){OperatingSystem="Windows Server 2025"})=="windows"&&DeviceIcons.ResolveKey(new(){OperatingSystem="Gentoo Linux"})=="gentoo","OS and distribution matching");
 Assert(DeviceIcons.ResolveKey(new(){Vendor="Cisco",OperatingSystem="Windows",IconKey="linux"})=="linux"&&DeviceIcons.ResolveKey(new(){Vendor="Cisco",IconKey="device"})=="device","Manual icon override and standard icon choice");
 Assert(DeviceIcons.ResolveKey(new(){Vendor="Unknown vendor"})=="device","Unknown vendor falls back to standard icon");
@@ -73,7 +73,7 @@ phonesProject.Connections.Add(new(){From="core",To=phones.Id,Purpose="Voice"});
 var phonesClone=ProjectStorage.Clone(phonesProject);
 Assert(phonesClone.Nodes.Last().Kind==NodeKind.Phones&&phonesClone.Nodes.Last().ParentId=="users"&&phonesClone.Connections.Last().To=="phones","Grouped phones preserve subnet membership and connection through save/reopen");
 Assert(!phones.CanContainNodes&&NetworkValidator.Validate(phonesProject).Count==0,"Grouped phones validate without individual handset addresses");
-Assert(TextExporter.Export(phonesProject,new()).Contains("Office phones / Phones")&&VisualExporter.Svg(phonesProject).Contains("data-device-icon=\"phones\""),"Phone group and symbol appear in text and SVG exports");
+Assert(TextExporter.Outline(phonesProject,new()).Contains("Office phones / Phones")&&VisualExporter.Svg(phonesProject).Contains("data-device-icon=\"phones\""),"Phone group and symbol appear in text and SVG exports");
 phones.Addresses="10.99.0.5";
 Assert(NetworkValidator.Validate(phonesProject).Any(i=>i.NodeId=="phones"&&i.Message.Contains("outside")),"Optional phone address is validated against its subnet");
 Assert(DeviceIcons.ResolveKey(new(){Kind=NodeKind.Phones,IconKey="device"})=="phones","Standard Phones card keeps its phone symbol");
@@ -94,4 +94,33 @@ Assert(imported.Count==2&&imported.All(n=>n.Kind==NodeKind.Device&&n.ParentId=="
 Assert(DiscoveryImport.Add(scanProject,scanReport.Hosts,"scan-net").Count==0,"Repeated discovery import creates no duplicate devices");
 Assert(DiscoveryImport.Add(scanProject,[new("10.9.0.1","outside",2)],"scan-net").Count==0,"Subnet import skips out-of-subnet results");
 Assert(ProjectStorage.Clone(scanProject).Nodes.Count(n=>n.Kind==NodeKind.Device)==3,"Imported devices round-trip through save/reopen");
+var spatial=new Project{Name="Spatial test",Nodes=[
+new(){Id="top",Name="Internet",Kind=NodeKind.Internet,X=160,Y=-200},
+new(){Id="left",Name="Left device",Kind=NodeKind.Device,X=-100,Y=100,Addresses="10.1.0.2"},
+new(){Id="right",Name="Right device",Kind=NodeKind.Device,X=450,Y=100,Addresses="10.1.0.3"}],Connections=[new(){Id="a",From="top",To="left",Purpose="Left link"},new(){Id="b",From="top",To="right",Purpose="Right link"},new(){Id="c",From="left",To="right",Purpose="Redundant link"}]};
+var spatialBefore=ProjectStorage.Serialize(spatial);
+var spatialText=TextExporter.Export(spatial,new(120,WindowsLineEndings:false));
+var diagram=spatialText[..spatialText.IndexOf("CONNECTION KEY",StringComparison.Ordinal)];
+Assert(diagram.IndexOf("Internet",StringComparison.Ordinal)<diagram.IndexOf("Left device",StringComparison.Ordinal),"Map export retains top-to-bottom placement with negative coordinates");
+var spatialRows=diagram.Split('\n');var leftRow=Array.FindIndex(spatialRows,l=>l.Contains("Left device"));var rightRow=Array.FindIndex(spatialRows,l=>l.Contains("Right device"));
+Assert(leftRow==rightRow&&spatialRows[leftRow].IndexOf("Left device",StringComparison.Ordinal)<spatialRows[rightRow].IndexOf("Right device",StringComparison.Ordinal),"Devices placed side by side remain on the same text row in left-to-right order");
+Assert(spatialText.Contains("Left link")&&spatialText.Contains("Right link")&&spatialText.Contains("Redundant link")&&!spatialText.Contains("[route not drawn]"),"Map draws actual cyclic connections and keeps exact link details");
+Assert(ProjectStorage.Serialize(spatial)==spatialBefore&&spatialText==TextExporter.Export(spatial,new(120,WindowsLineEndings:false)),"Spatial export is deterministic and never changes map geometry");
+Assert(spatialText.All(c=>c<=127)&&TextExporter.Export(spatial,new(Unicode:true)).Contains('┌'),"Map supports strict ASCII and Unicode boxes");
+Assert(!Regex.IsMatch(TextExporter.Export(spatial,new()),"(?<!\\r)\\n"),"Spatial export respects Windows line endings");
+var nestedSpatial=ProjectStorage.Clone(sample);var spatialContainer=nestedSpatial.Nodes.Find(n=>n.Id=="hq")!;spatialContainer.Collapsed=true;
+var collapsedSpatial=TextExporter.Export(nestedSpatial,new());var collapsedDiagram=collapsedSpatial[..collapsedSpatial.IndexOf("CONNECTION KEY",StringComparison.Ordinal)];
+Assert(collapsedDiagram.Contains("[+] HEADQUARTERS")&&!collapsedDiagram.Contains("AD / DNS"),"Collapsed containers hide descendants in the spatial diagram");
+Assert(Regex.Replace(collapsedSpatial,@"\s+"," ").Contains("AD / DNS"),"Connections to hidden children retain their exact endpoints in the connection key");
+Assert(TextExporter.Export(sample,new(Layout:TextExportLayout.Outline))==TextExporter.Outline(sample,new()),"Original fixed-width outline remains selectable");
+Assert(TextExporter.Export(new(),new()).Contains("no visible"),"Empty maps export without a layout exception");
+var crowdedSpatial=ProjectStorage.Clone(spatial);crowdedSpatial.Nodes[0].Name=new string('A',140);
+Assert(TextExporter.Export(crowdedSpatial,new(80)).Contains(new string('A',20)),"Long device names wrap inside readable spatial boxes");
+var memberSpatial=new Project{Nodes=[new(){Id="s",Name="Member stack",Kind=NodeKind.Switch,Width=260,Height=180,ShowStackMembers=true,StackMembers=[new(){Id="m1",Number=1,Name="First member"},new(){Id="m2",Number=2,Name="Second member"}]},new(){Id="d",Name="Peer",Kind=NodeKind.Device,X=400}],Connections=[new(){From="s",To="d",FromStackMemberId="m2"}]};
+var memberDiagram=TextExporter.Export(memberSpatial,new()).Split("CONNECTION KEY")[0].Split('\n');
+var stackTitle=memberDiagram.First(l=>l.Contains("Member stack"));int stackLeft=stackTitle.IndexOf('|'),stackRight=stackTitle.IndexOf('|',stackLeft+1);
+Assert(memberDiagram.First(l=>l.Contains("02 Second member"))[stackRight]=='+',"Expanded stack connection attaches at its assigned member row");
+var hostedSpatial=new Project{Nodes=[new(){Id="h",Kind=NodeKind.Hypervisor,Name="Hyper-V",Width=460,Height=240},new(){Id="g",Kind=NodeKind.VirtualMachine,Name="Guest",ParentId="h",X=20,Y=70}],Connections=[new(){From="h",To="g",Kind=ConnectionKind.Hosting}]};
+var hostedText=TextExporter.Export(hostedSpatial,new());
+Assert(hostedText.Contains("[hosting]")&&!hostedText.Contains("[route not drawn]"),"Hosting links render inside the host container");
 Console.WriteLine($"\n{checks} checks passed.");

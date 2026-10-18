@@ -1,5 +1,12 @@
 # Version history
 
+## 1.6.0 — 2026-10-17
+
+- Text export now defaults to a spatial map, preserving relative device positions, side-by-side subnet groups, nested containers and collapsed state.
+- Draw actual network and hosting connections with an exact endpoint key, including redundant links and cycles.
+- Keep labels readable by expanding the character grid when needed; long names wrap within cards.
+- Retain the original fixed-width outline as a selectable layout, alongside ASCII/Unicode and export detail options.
+
 ## 1.5.1 — 2026-10-17
 
 - Added a Windows installer with per-user installation, Start menu and optional desktop shortcuts, stable upgrade identity and an uninstaller.

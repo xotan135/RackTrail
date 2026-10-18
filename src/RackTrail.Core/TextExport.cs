@@ -1,10 +1,12 @@
 using System.Text;
 namespace RackTrail.Core;
 
-public record TextExportOptions(int Width = 120, bool Unicode = false, bool Detailed = true, bool IncludeIps = true, bool IncludeCidr = true, bool IncludeVlan = true, bool IncludeRoles = true, bool IncludeLabels = true, bool WindowsLineEndings = true);
+public enum TextExportLayout { Map, Outline }
+public record TextExportOptions(int Width = 120, bool Unicode = false, bool Detailed = true, bool IncludeIps = true, bool IncludeCidr = true, bool IncludeVlan = true, bool IncludeRoles = true, bool IncludeLabels = true, bool WindowsLineEndings = true, TextExportLayout Layout = TextExportLayout.Map);
 public static class TextExporter
 {
-    public static string Export(Project p, TextExportOptions o)
+    public static string Export(Project p, TextExportOptions o) => o.Layout == TextExportLayout.Map ? SpatialTextExporter.Export(p,o) : Outline(p,o);
+    public static string Outline(Project p, TextExportOptions o)
     {
         int width = Math.Clamp(o.Width, 40, 240); var lines = new List<string>();
         string Clean(string s) => o.Unicode ? s : new string(s.Normalize(NormalizationForm.FormKD).Select(c => c is >= ' ' and <= '~' ? c : '?').ToArray());

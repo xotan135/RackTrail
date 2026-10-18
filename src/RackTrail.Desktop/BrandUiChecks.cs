@@ -32,6 +32,11 @@ public static class BrandUiChecks
         scanWindow.Show();Avalonia.Threading.Dispatcher.UIThread.RunJobs();scanWindow.UpdateLayout();
         using(var scanBitmap=new RenderTargetBitmap(new PixelSize(840,760),new Vector(96,96))){scanBitmap.Render(scanWindow);scanBitmap.Save(Path.Combine(directory,"targeted-scan.png"));}
         scanWindow.Close();
+        var textVm=new EditorViewModel();textVm.Replace(RackTrail.Core.SampleNetwork.Create());
+        var textWindow=new TextExportWindow(textVm,new DesktopPlatformServices(new Window())){RequestedThemeVariant=ThemeVariant.Dark,ShowInTaskbar=false,Width=1500,Height=1300};
+        textWindow.Show();Avalonia.Threading.Dispatcher.UIThread.RunJobs();textWindow.UpdateLayout();
+        using(var textBitmap=new RenderTargetBitmap(new PixelSize(1500,1300),new Vector(96,96))){textBitmap.Render(textWindow);textBitmap.Save(Path.Combine(directory,"text-export.png"));}
+        textWindow.Close();
         Completed = true;
     }
 }

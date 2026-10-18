@@ -130,15 +130,15 @@ Unsaved changes are autosaved every 30 seconds to the platform's local applicati
 
 ## Text and visual exports
 
-**Text export** opens a live monospaced preview with 80, 120 and 160 column limits. Choose strict ASCII or Unicode borders; overview or detailed output; IPs, CIDRs, VLANs, roles and connection labels; and Windows CRLF or Unix LF line endings.
+**Text export** opens a live monospaced preview. The default **Map** layout follows the canvas: devices keep their relative left/right and top/bottom placement, containers enclose their members, and collapsed containers hide their descendants. Sparse gaps are compressed and card labels wrap so the result remains readable.
 
-Output is generated directly from the model and has three parts:
+Actual connections are drawn between visible endpoints. A connection key retains endpoint names, ports, bandwidth and purpose without crowding the drawing. Crossings do not imply junctions. Dense diagrams can have connections listed in the key without a drawn route when there is no clear route.
 
-1. A compact topology spanning forest built from actual connections.
-2. Numbered hierarchy sections containing nested boxes for sites, subnets and devices.
-3. An exact connection ledger containing both endpoint references and optional link metadata. This preserves cyclic, redundant and cross-section links without text crossings or overlapping labels. A repeated endpoint in the topology is shown as a reference.
+Choose a target of 80, 120 or 160 columns. Map layout may expand beyond that target to preserve readable cards and containment; use the horizontal scrollbar for wider maps. Choose **Outline** when a strict column limit is required: it retains the original topology tree, detailed hierarchy and connection ledger.
 
-Deep hierarchies receive continuation sections instead of exceeding the width limit. Strict ASCII replaces unsupported characters predictably with `?` after compatibility normalization. Unchanged models produce identical output. Export `.txt`, Markdown fences or clipboard text. Text layout targets ordinary single-cell monospaced labels; wide Unicode glyphs may require ASCII mode for consistent terminal alignment.
+Both layouts support ASCII or Unicode, overview or detailed content, IPs, CIDRs, VLANs, roles, link labels and Windows CRLF or Unix LF line endings. Export as text, fenced Markdown or clipboard text. Map layout follows the stack member visibility on the canvas; Outline retains full stack inventory in detailed mode. ASCII is best for terminals with uncertain Unicode character widths.
+
+![Spatial text export](docs/images/text-export.png)
 
 **SVG** produces a scalable model-based vector drawing; **PNG** uses SkiaSharp. Both preserve positions and visible routes and honor collapsed containers. PNG dimensions are capped at 10,000 pixels per axis to bound memory use. The UI bundles Inter. PNG and SVG use platform sans-serif font fallback, so font metrics can differ slightly across systems.
 
