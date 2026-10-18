@@ -1,8 +1,10 @@
-name: Windows build
+name: Windows build and release
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
@@ -13,6 +15,18 @@ jobs:
       - uses: actions/setup-dotnet@v6.0.0
         with:
           dotnet-version: '10.0.x'
+      - name: Check release version
+        id: version
+        shell: pwsh
+        env:
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          [xml]$project = Get-Content src/RackTrail.Desktop/RackTrail.csproj -Raw
+          $version = [string]$project.Project.PropertyGroup.Version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release version' }
+          if ($env:RELEASE_REF.StartsWith('refs/tags/') -and $env:RELEASE_TAG -ne "v$version") { throw 'Tag and application version must match' }
+          "version=$version" >> $env:GITHUB_OUTPUT
       - name: Restore
         run: dotnet restore RackTrail.slnx
       - name: Build
@@ -21,3 +35,51 @@ jobs:
         run: dotnet run --project tests/RackTrail.Tests -c Release --no-build
       - name: Native workflow checks
         run: dotnet run --project src/RackTrail.Desktop -c Release --no-build -- --smoke-test artifacts/ci-smoke
+      - name: Locate installer compiler
+        shell: pwsh
+        run: |
+          $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
+          if (!(Test-Path -LiteralPath $compiler)) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          }
+          if (!(Test-Path -LiteralPath $compiler)) { throw 'Inno Setup compiler is missing' }
+      - name: Package installer and portable ZIP
+        run: ./scripts/Build-Installer.ps1
+      - name: Verify installation and uninstall
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.version }}
+        run: ./scripts/Test-Installer.ps1 -PackageDirectory "artifacts/releases/$env:PACKAGE_VERSION"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: RackTrail-windows
+          path: |
+            artifacts/releases/*/*.exe
+            artifacts/releases/*/*.zip
+            artifacts/releases/*/*.sha256
+            artifacts/releases/*/release-notes.md
+          if-no-files-found: error
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: verify
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: RackTrail-windows
+          path: release-files
+      - name: Publish release downloads
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $notes = @(Get-ChildItem release-files -Recurse -Filter release-notes.md)
+          if ($notes.Count -ne 1) { throw 'Expected one release notes file' }
+          $assets = @(Get-ChildItem $notes[0].DirectoryName -File | Where-Object Extension -in '.exe','.zip','.sha256' | ForEach-Object FullName)
+          if ($assets.Count -ne 4) { throw 'Expected installer, ZIP and two checksums' }
+          gh release create $env:RELEASE_TAG @assets --verify-tag --title "RackTrail $($env:RELEASE_TAG.TrimStart('v')) — Windows x64" --notes-file $notes[0].FullName --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

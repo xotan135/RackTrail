@@ -25,13 +25,18 @@ Built with C#, .NET 10 and Avalonia. The supported release targets Windows x64.
 
 ## Launch the Windows release
 
-Download the ZIP from [GitHub Releases](https://github.com/xotan135/RackTrail/releases/latest), or run `scripts/Publish-Windows.ps1` to build it from source.
+Choose a download from [GitHub Releases](https://github.com/xotan135/RackTrail/releases/latest):
+
+- **Installer:** run `RackTrail-Setup-<version>-win-x64.exe`. It installs for the current Windows user, adds a Start menu shortcut, offers an optional desktop shortcut and provides an uninstaller. Reinstall a newer version to update the app. Custom icons and user-created files are preserved.
+- **Portable ZIP:** extract `RackTrail-win-x64.zip` and run `RackTrail.exe` from the extracted folder.
+
+Both include the runtime, so no .NET installation is required. The downloads are unsigned. SHA256 checksum files accompany each download.
 
 1. Download and extract `RackTrail-win-x64.zip` into a folder.
 2. Run `RackTrail.exe` from the extracted folder. Keep all accompanying DLLs and runtime files together.
 3. Start with an empty map, choose the sample when prompted, or use **Open** for a saved JSON project.
 
-The release is self-contained: no .NET installation is required. This is an unsigned portable folder release, not an installer. The unpacked executable is also available at `artifacts/releases/RackTrail-win-x64/RackTrail.exe`.
+The release is self-contained: no .NET installation is required. Both installer and portable downloads are unsigned. The unpacked executable is also available at `artifacts/releases/RackTrail-win-x64/RackTrail.exe`.
 
 ## Editing workflow
 
@@ -157,11 +162,17 @@ Create a self-contained release:
 ./scripts/Publish-Windows.ps1
 ```
 
+### Automated Windows releases
+
+GitHub Actions verifies each update and produces downloadable build artifacts containing the installer, portable ZIP and checksums. Pushing a version tag such as `v1.5.1` publishes those downloads as a GitHub release after all checks pass. The tag must match the app version and its changelog entry. Manual workflow runs build artifacts without publishing a release.
+
+For a local installer build, install Inno Setup 6 and the .NET 10 SDK, then run `./scripts/Build-Installer.ps1`. Pass `-CompilerPath` if ISCC.exe is outside its default installation folder. Output is placed in `artifacts/releases/<version>/`. The existing `./scripts/Publish-Windows.ps1` remains available for portable-only builds.
+
 ## Architecture and current limits
 
 `src/RackTrail.Core` has no UI or operating-system dependencies. It contains the network model, validation, versioned JSON storage, container layout, orthogonal routing, ASCII/Unicode export and SVG export. `src/RackTrail.Desktop/EditorViewModel.cs` owns selection, history and editor operations. `MapCanvas.cs` handles drawing and pointer gestures. `MainWindow.cs` and `TextExportWindow.cs` compose the native interface. `IPlatformServices` isolates file pickers, clipboard and recovery paths; `DesktopPlatformServices` uses Avalonia and portable .NET paths. `PngExporter.cs` uses SkiaSharp for PNG rendering.
 
-The layout and routing engines are deterministic heuristics, not a full obstacle-avoidance router. Dense arbitrary maps may benefit from manual positioning. Stored custom route points are rendered and preserved; the initial UI provides automatic routes and a reset command, without a waypoint editing tool. SVG/PNG labels on very dense diagrams can overlap; text exports avoid that through separate connection lanes and references. The initial release has no installer, code signing, automatic topology discovery or multi-user editing.
+The layout and routing engines are deterministic heuristics, not a full obstacle-avoidance router. Dense arbitrary maps may benefit from manual positioning. Stored custom route points are rendered and preserved; the initial UI provides automatic routes and a reset command, without a waypoint editing tool. SVG/PNG labels on very dense diagrams can overlap; text exports avoid that through separate connection lanes and references. The current release has no code signing, automatic topology discovery or multi-user editing.
 
 See the [Windows verification notes](docs/Verification.md).
 

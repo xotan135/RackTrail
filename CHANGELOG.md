@@ -1,5 +1,11 @@
 # Version history
 
+## 1.5.1 — 2026-10-17
+
+- Added a Windows installer with per-user installation, Start menu and optional desktop shortcuts, stable upgrade identity and an uninstaller.
+- Preserve custom icons and user-created files during reinstall and uninstall.
+- GitHub Actions now builds and tests the app, packages installer and portable ZIP downloads, verifies installation/reinstallation/uninstall, and publishes tagged versions with SHA256 checksums.
+
 ## 1.5.0 — 2026-10-16
 
 - Added targeted IPv4 discovery with subnet/range/address input, exclusions, target preview, cancellation and review before importing; ping replies and hostnames become generic device cards, with duplicate prevention and undo.
