@@ -22,11 +22,6 @@ Create a self-contained release:
 ./scripts/Publish-Windows.ps1
 ```
 
-### Automated Windows releases
-
-GitHub Actions verifies each update and produces downloadable build artifacts containing the installer, portable ZIP and checksums. Pushing a version tag such as `v1.6.1` publishes those downloads as a GitHub release after all checks pass. The tag must match the app version and its changelog entry. Manual workflow runs build artifacts without publishing a release.
-
-For a local installer build, install Inno Setup 6 and the .NET 10 SDK, then run `./scripts/Build-Installer.ps1`. Pass `-CompilerPath` if ISCC.exe is outside its default installation folder. Output is placed in `artifacts/releases/<version>/`. The existing `./scripts/Publish-Windows.ps1` remains available for portable-only builds.
 
 ## Architecture
 
