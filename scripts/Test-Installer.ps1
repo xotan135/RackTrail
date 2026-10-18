@@ -8,12 +8,19 @@ $taskId = [guid]::NewGuid().ToString('N')
 $taskInstall = Join-Path $env:RUNNER_TEMP ('RackTrail-install-test-' + $taskId)
 $taskGroup = 'RackTrail test ' + $taskId
 $taskShortcut = Join-Path $env:APPDATA ("Microsoft/Windows/Start Menu/Programs/$taskGroup/RackTrail.lnk")
+$taskSetupLog = Join-Path $env:RUNNER_TEMP ('RackTrail-setup-' + $taskId + '.log')
 function Invoke-Setup {
-    $taskSetup = Start-Process -FilePath $taskInstallers[0].FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/DIR="' + $taskInstall + '"'),('/GROUP="' + $taskGroup + '"'),'/TASKS=startmenuicon' -WindowStyle Hidden -Wait -PassThru
+    $taskSetup = Start-Process -FilePath $taskInstallers[0].FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/DIR="' + $taskInstall + '"'),('/GROUP="' + $taskGroup + '"'),'/TASKS=startmenuicon',('/LOG="' + $taskSetupLog + '"') -WindowStyle Hidden -Wait -PassThru
     if ($taskSetup.ExitCode -ne 0) { throw "Installer failed with exit code $($taskSetup.ExitCode)." }
 }
 Invoke-Setup
-if (!(Test-Path -LiteralPath (Join-Path $taskInstall 'RackTrail.exe')) -or !(Test-Path -LiteralPath $taskShortcut)) { throw 'Installed app or Start menu shortcut is missing.' }
+if (!(Test-Path -LiteralPath (Join-Path $taskInstall 'RackTrail.exe')) -or !(Test-Path -LiteralPath $taskShortcut)) {
+    Write-Output "Expected app: $taskInstall/RackTrail.exe"
+    Write-Output "Expected shortcut: $taskShortcut"
+    Write-Output ("Programs known folder: " + [Environment]::GetFolderPath('Programs'))
+    if (Test-Path -LiteralPath $taskSetupLog) { Get-Content -LiteralPath $taskSetupLog | Select-Object -Last 35 }
+    throw 'Installed app or Start menu shortcut is missing.'
+}
 $taskIcon = Join-Path $taskInstall 'icons/custom-user-icon.png'
 Copy-Item -LiteralPath (Join-Path $taskInstall 'icons/windows.png') -Destination $taskIcon
 $taskIconHash = (Get-FileHash -LiteralPath $taskIcon).Hash
