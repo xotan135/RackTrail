@@ -6,11 +6,11 @@ $taskInstallers = @(Get-ChildItem -LiteralPath $taskPackage -Filter 'RackTrail-S
 if ($taskInstallers.Count -ne 1) { throw 'Expected exactly one installer.' }
 $taskId = [guid]::NewGuid().ToString('N')
 $taskInstall = Join-Path $env:RUNNER_TEMP ('RackTrail-install-test-' + $taskId)
-$taskGroup = 'RackTrail test ' + $taskId
-$taskShortcut = Join-Path $env:APPDATA ("Microsoft/Windows/Start Menu/Programs/$taskGroup/RackTrail.lnk")
+$taskGroup = 'RackTrail'
+$taskShortcut = Join-Path ([Environment]::GetFolderPath('Programs')) "$taskGroup/RackTrail.lnk"
 $taskSetupLog = Join-Path $env:RUNNER_TEMP ('RackTrail-setup-' + $taskId + '.log')
 function Invoke-Setup {
-    $taskSetup = Start-Process -FilePath $taskInstallers[0].FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/DIR="' + $taskInstall + '"'),('/GROUP="' + $taskGroup + '"'),'/TASKS=startmenuicon',('/LOG="' + $taskSetupLog + '"') -WindowStyle Hidden -Wait -PassThru
+    $taskSetup = Start-Process -FilePath $taskInstallers[0].FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/DIR="' + $taskInstall + '"'),'/TASKS=startmenuicon',('/LOG="' + $taskSetupLog + '"') -WindowStyle Hidden -Wait -PassThru
     if ($taskSetup.ExitCode -ne 0) { throw "Installer failed with exit code $($taskSetup.ExitCode)." }
 }
 Invoke-Setup
