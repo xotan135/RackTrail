@@ -10,6 +10,60 @@ RackTrail is a Windows desktop app for building and maintaining network maps. Do
 
 [Download RackTrail for Windows x64](https://github.com/xotan135/RackTrail/releases/latest) · [Version history](CHANGELOG.md)
 
+## Editing larger maps
+
+- **HTML** exports a single file you can open in a browser or share. Device
+  pictures are embedded; an internet connection and RackTrail are not required.
+  Drag to pan, scroll to zoom, use **Fit map** or **100%**, and choose **Print / PDF**
+  to print the whole map. The file preserves the saved layout, collapsed containers,
+  routing, and connection-label setting. It is a read-only view; edit the original
+  project in RackTrail. Like PNG/SVG, it contains the visible network information
+  shown on the map.
+- Connections automatically avoid device cards and container headings, fan out at
+  device edges, and prefer gaps between unrelated sites. **Arrange > Reroute
+  connections** recomputes automatic paths without moving devices or replacing
+  saved custom paths. Dragging uses a fast preview; routing finishes on release.
+- Select a device or container to highlight its links and dim unrelated traces.
+  **View** can show connections equally or restore highlighting. Automatic labels
+  appear at detailed zoom on small maps; on maps with more than 30 connections,
+  hover or select a trace to see its details. **Show all connection labels** in
+  View overrides this and includes all labels in PNG/SVG exports.
+- Device labels center automatically when you change standard shapes or dimensions.
+  In image mode, pictures keep their proportions with information beside them.
+  Use the **Image size** slider for live scaling, or turn off **Show device information**
+  for an image-only AP as small as 32 pixels. Pictures and these settings are embedded
+  in saved maps and retained in PNG/SVG exports.
+- Container and hypervisor pickers show nested full paths such as **Site West ›
+  Data**, with VLAN IDs and CIDRs. Discovery uses the same hierarchy, so repeated
+  names at different sites can be distinguished before assigning an item.
+- **Arrange** provides Bring to front / Send to back, Fit container to contents,
+  Lock / Unlock, six alignment options, and even horizontal or vertical spacing.
+  Alignment uses items in the same container; spacing requires at least three.
+- Clicking a library item adds it to an open spot near the current view center.
+  Dragging from the library uses the drop position. New items appear on top and
+  clear device filters so they remain visible. Clicks follow the visible layer order.
+- Empty containers can be resized to **120 pixels high**. Containers with contents
+  retain enough space for their children. Fit container to contents removes extra
+  space while preserving membership and connections.
+- Locks protect position, size, and deletion. Locking a container protects its
+  descendants; a locked descendant also prevents moving its whole parent group.
+  Auto layout asks you to unlock items first rather than changing locked positions.
+- **Guides** shows matching edges and centers during a drag. **Snap** independently
+  controls the existing 10-pixel grid snapping.
+- Ctrl-click or drag a selection rectangle, then use **Edit subnet appearance** in
+  Properties to apply a shared name, outline color, width, or height to selected
+  subnets. Blank fields keep existing values. Automatic resets the custom color.
+- **Ctrl+F** focuses search. Search names, IPs, CIDRs, VLAN IDs, site names, and stack
+  inventory; press **Enter** or click a result to reveal and center it. Hidden
+  ancestors expand automatically.
+- **View** switches the entire map or selected containers between compact and
+  expanded states. Compact collapses contents; expanded restores visibility without
+  changing saved positions or sizes. Zoom to selected is also available here.
+
+Layers, locks, colors, and collapsed states are saved in the project. Editing
+commands support Undo/Redo. SVG and PNG exports retain layer order and colors;
+older project files load with their existing appearance and unlocked items.
+
 ## Features
 
 - Map sites, buildings, VLANs, subnets and security zones.
@@ -42,12 +96,11 @@ The release is self-contained: no .NET installation is required. Both installer 
 
 ### Targeted device discovery
 
-Click **Scan subnet** in the device library. Enter an IPv4 subnet such as `192.168.20.0/24`, a full range such as `192.168.20.10-192.168.20.50`, or individual addresses. Separate multiple targets with commas or new lines. Optional exclusions accept the same formats. The preview shows the number of addresses after exclusions; scanning starts only when you click **Start scan**. Each scan is limited to 1,024 addresses. CIDR targets omit network and broadcast addresses except for /31 and /32.
+Click **Discover** in the toolbar, then enter the authorized IPv4 subnets, ranges or addresses to inspect, and add optional exclusions. Confirm authorization before starting. Choose SNMP Off, v1 or v2c and optional service checks to add evidence about device types, hardware, operating systems and roles.
 
-Discovery uses ICMP ping and reverse DNS hostname lookup. Devices that block ping may be missed, and no reply does not mean an address is unused. It does not identify device types, vendors, wireless assignments or physical connections. Stop cancels remaining work and keeps completed results for review.
+Review each result's type, confidence and evidence before applying it to the map. Insufficient or conflicting evidence stays **Unknown**. Correct types directly in scan review, then assign a container or create a subnet beneath a chosen parent. Manual type corrections survive later scans; **Restore automatic classification** returns to the latest automatic result. Type and confidence filters and a device legend help review the map.
 
-Select results and choose an existing subnet or **No subnet assignment**, then click **Add selected to map**. Existing device IP addresses are skipped; when assigning a subnet, addresses outside it are skipped too. Imported cards use the generic **Device** type; change the type and name in Properties as needed. One Undo removes the entire import. Discovery does not run automatically.
-
+See [Device discovery and classification](docs/Discovery.md) for configuration, supported methods, limits and correction instructions.
 ### Phones
 
 Choose **Phones** in the device library to add one card representing the phones on a subnet. Use **Container membership** to assign it to the voice subnet or VLAN, and connect it to a switch if needed. Name it for the group (for example **Office phones**) and use Notes for any additional details. Individual handset cards and IP addresses are optional. The phone symbol and card are included in saved projects and text, SVG and PNG exports.
@@ -140,7 +193,17 @@ See [BUILD.md](BUILD.md) for prerequisites, build and verification commands, ins
 
 ## Current limits
 
-The layout and routing engines are deterministic heuristics, not a full obstacle-avoidance router. Dense arbitrary maps may benefit from manual positioning. Stored custom route points are rendered and preserved; the initial UI provides automatic routes and a reset command, without a waypoint editing tool. SVG/PNG labels on very dense diagrams can overlap; text exports avoid that through separate connection lanes and references. The current release has no code signing, automatic topology discovery or multi-user editing.
+Automatic routing uses obstacle avoidance, bend, shared-lane and crossing costs;
+it cannot guarantee a crossing-free diagram. Irregular large maps use smaller
+local routing grids instead of abandoning obstacle avoidance for the whole map.
+Overlapping devices, blocked attachment points, or extreme routing budgets can
+still require simple fallback paths. Device spacing matters on dense maps. Stored custom route
+points are rendered and preserved; the UI provides a reset command without a
+waypoint editing tool. Large-map PNG/SVG exports hide connection labels by
+default. Connection captions use free space outside device and container names;
+captions that cannot fit are omitted, and full details remain in connection properties.
+Small gaps at trace crossings distinguish a crossing from a connection. The current
+release has no code signing, automatic physical-link mapping or multi-user editing.
 
 ### Device images and canvas controls
 

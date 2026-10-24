@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace RackTrail.Core;
 
-public enum NodeKind { Internet, Firewall, Router, Switch, Server, Workstation, AccessPoint, Storage, Site, Building, Vlan, Subnet, SecurityZone, Printer, Hypervisor, VirtualMachine, Phones, Device }
+public enum NodeKind { Internet, Firewall, Router, Switch, Server, Workstation, AccessPoint, Storage, Site, Building, Vlan, Subnet, SecurityZone, Printer, Hypervisor, VirtualMachine, Phones, Device, Phone, IoT }
 public enum DeviceShape { RoundedRectangle, Rectangle, Circle }
 public enum ConnectionKind { Network, Hosting }
 public record MapPoint(double X, double Y);
@@ -36,7 +36,10 @@ public class Node
     public string? HostId { get; set; }
     public DeviceShape Shape { get; set; }
     public bool UseDeviceImage { get; set; }
+    public double ImageSize { get; set; } = 48;
+    public bool ShowDeviceInfo { get; set; } = true;
     public string Vendor { get; set; } = "";
+    public DeviceClassification? Classification { get; set; }
     public string IconKey { get; set; } = "auto";
     public string EmbeddedIconKey { get; set; } = "";
     public string IconPngBase64 { get; set; } = "";
@@ -47,13 +50,16 @@ public class Node
     public List<StackMember> StackMembers { get; set; } = [];
     public bool ShowStackMembers { get; set; }
     [JsonIgnore] public bool IsStack => Kind == NodeKind.Switch && StackMembers.Count > 0;
-    [JsonIgnore] public string DisplayType => IsStack ? $"Switch stack ({StackMembers.Count} members)" : Kind.ToString();
+    [JsonIgnore] public string DisplayType => IsStack ? $"Switch stack ({StackMembers.Count} members)" : DeviceClassifier.Label(Kind);
     [JsonIgnore] public string VisualDetail => IsStack ? $"{StackMembers.Count} members | {Addresses}" : Addresses;
     [JsonIgnore] public double DisplayHeight => CanContainNodes && Collapsed ? 60 : IsStack && ShowStackMembers ? Math.Max(Height, 86 + StackMembers.Count * 24) : !CanContainNodes&&!UseDeviceImage&&Shape==DeviceShape.Circle?Math.Max(Height,Width):Height;
     public string Cidr { get; set; } = "";
     public string Gateway { get; set; } = "";
     public string VlanId { get; set; } = "";
     public bool Collapsed { get; set; }
+    public long ZOrder { get; set; }
+    public bool Locked { get; set; }
+    public string AccentColor { get; set; } = "";
     public bool AllowValidationExceptions { get; set; }
     [JsonIgnore] public bool IsContainer => Kind is NodeKind.Site or NodeKind.Building or NodeKind.Vlan or NodeKind.Subnet or NodeKind.SecurityZone;
     [JsonIgnore] public bool CanContainNodes => IsContainer || Kind == NodeKind.Hypervisor;
@@ -117,6 +123,7 @@ public static class ProjectStorage
         foreach (var n in p.Nodes)
         {
             if (!double.IsFinite(n.X + n.Y + n.Width + n.Height) || n.Width < 30 || n.Height < 30) throw new InvalidDataException("Invalid node geometry.");
+            if(!double.IsFinite(n.ImageSize)||n.ImageSize<16||n.ImageSize>256)throw new InvalidDataException("Device image size must be 16–256.");
 
             if(n.HostId is {} hostId&&((!byId.TryGetValue(hostId,out var host)||host.Kind!=NodeKind.Hypervisor)||n.Kind!=NodeKind.VirtualMachine))throw new InvalidDataException("Invalid virtual machine host.");
         }

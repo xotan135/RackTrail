@@ -4,6 +4,15 @@
 
 ## Build and verify
 
+Before publishing, run `./scripts/Check-PublishContents.ps1`. It checks tracked
+files and non-ignored additions for private maps, generated files, personal paths,
+and recognized credential patterns. Packaging and CI run this check automatically.
+For local push protection, run `git config core.hooksPath .githooks` once per clone.
+The pre-push hook scans the outgoing history and blocks non-branch/tag references,
+including local recovery snapshots. Keep real maps under `private/` or in ignored
+root JSON files; the two approved maps under `samples/` contain fictional data.
+This pattern check complements review; it cannot recognize every kind of secret.
+
 Install the .NET 10 SDK. Internet access is needed for the first NuGet restore.
 
 ```powershell

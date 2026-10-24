@@ -4,6 +4,7 @@ public static class MapLayout
 {
     public static void Arrange(Project p)
     {
+        if(p.Nodes.Any(n=>n.Locked))throw new InvalidDataException("Unlock items before running Auto layout. Locked positions have been preserved.");
         double Size(Node n) { if (!n.CanContainNodes) return n.Width = n.IsStack?260:180; var children = p.Nodes.Where(x => x.ParentId == n.Id).ToList(); n.Width = Math.Max(240, children.Sum(Size) + Math.Max(0, children.Count - 1) * 30 + 40); n.Height = Math.Max(160, children.Select(x => x.CanContainNodes?x.Height:x.DisplayHeight).DefaultIfEmpty(80).Max() + 100); return n.Width; }
         void Place(Node n, double x, double y) { n.X = x; n.Y = y; double cx = x + 20; foreach (var child in p.Nodes.Where(z => z.ParentId == n.Id)) { Place(child, cx, y + 70); cx += child.Width + 30; } }
         var roots = p.Nodes.Where(n => n.ParentId == null).ToList(); foreach (var n in roots) Size(n);
@@ -13,6 +14,9 @@ public static class MapLayout
         foreach (var c in p.Connections) c.Route = [];
     }
     public static List<MapPoint> Route(Project p, Connection c)
+        => ConnectionRouter.Route(p,c);
+    public static List<MapPoint> PreviewRoute(Project p,Connection c) => LegacyRoute(p,c);
+    internal static List<MapPoint> LegacyRoute(Project p, Connection c)
     {
         var a = p.VisibleEndpoint(c.From); var b = p.VisibleEndpoint(c.To);
         if (a == null || b == null || a.Id == b.Id) return [];

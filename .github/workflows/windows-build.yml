@@ -27,6 +27,8 @@ jobs:
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release version' }
           if ($env:RELEASE_REF.StartsWith('refs/tags/') -and $env:RELEASE_TAG -ne "v$version") { throw 'Tag and application version must match' }
           "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Check publication contents
+        run: ./scripts/Check-PublishContents.ps1
       - name: Restore
         run: dotnet restore RackTrail.slnx
       - name: Build

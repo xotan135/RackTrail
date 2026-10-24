@@ -57,6 +57,9 @@ var portable=new Node{Kind=NodeKind.Printer,Vendor="Acme Corp",OperatingSystem="
 portable.IconKey="device";Assert(DeviceIcons.EmbeddedPng(portable)==null,"Stale embedded icon does not override standard choice");
 printerProject.Nodes.Last().IconKey="hp";Assert(VisualExporter.Svg(printerProject).Contains("data-device-icon=\"hp\""),"SVG contains selected vendor vector icon");
 
+var compactProject=new Project();var compactSubnet=new Node{Kind=NodeKind.Subnet,Height=240};compactProject.Nodes.Add(compactSubnet);
+Containment.Resize(compactProject,compactSubnet,266,120);Assert(compactSubnet.Height==120,"Empty subnet can resize to the imported compact height");
+Containment.Resize(compactProject,compactSubnet,266,1);Assert(compactSubnet.Height==120,"Compact containers retain a readable minimum height");
 var geometry=new Project();var outer=new Node{Kind=NodeKind.Site,Width=300,Height=180};var inner=new Node{Kind=NodeKind.Subnet,X=900,Y=900,Width=240,Height=160};var child=new Node{Kind=NodeKind.AccessPoint,X=-800,Y=-900,Width=180,Height=76};geometry.Nodes.AddRange([outer,inner,child]);Containment.Assign(geometry,inner,outer.Id);Containment.Assign(geometry,child,inner.Id);
 Assert(Containment.IsInside(child,inner)&&Containment.IsInside(inner,outer),"Assignment places outside devices inside nested containers and grows ancestors");
 Containment.Move(geometry,child,-9999,-9999);Assert(Containment.IsInside(child,inner),"Child drag respects left and top content boundary");Containment.Move(geometry,child,9999,9999);Assert(Containment.IsInside(child,inner),"Child drag respects right and bottom boundary");
@@ -164,4 +167,10 @@ maliciousIcon.IconPngBase64=Convert.ToBase64String(tinyIcon[..24]);Assert(Device
 maliciousIcon.IconPngBase64="not base64!";Assert(DeviceIcons.EmbeddedPng(maliciousIcon)==null,"Malformed base64 keeps safe fallback behavior");
 maliciousIcon.IconPngBase64=Convert.ToBase64String(oversizedIcon);Assert(!VisualExporter.Svg(new(){Nodes=[maliciousIcon]}).Contains("data:image"),"SVG does not forward an oversized embedded image");
 maliciousIcon.IconPngBase64=Convert.ToBase64String(tinyIcon);Assert(DeviceIcons.EmbeddedPng(maliciousIcon)!.SequenceEqual(tinyIcon),"Valid small embedded PNG remains portable and byte-preserving");
+await ClassificationChecks.Run(Assert);
+DiscoveryReviewChecks.Run(Assert);
+EditingChecks.Run(Assert);
+PresentationChecks.Run(Assert);
+RoutingChecks.Run(Assert);
+HtmlExportChecks.Run(Assert);
 Console.WriteLine($"\n{checks} checks passed.");

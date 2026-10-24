@@ -5,6 +5,7 @@
 *.md text eol=lf
 *.yml text eol=lf
 *.ps1 text eol=crlf
+.githooks/* text eol=lf
 *.png binary
 *.ico binary
 # Preserve export line endings and upstream license formatting.

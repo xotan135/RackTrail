@@ -6,3 +6,31 @@ artifacts/
 *.tmp
 .env
 .env.*
+
+# Local maps and exports can contain private network information.
+/*.json
+/*.html
+/*.htm
+*.networkmap.json
+!/samples/*.networkmap.json
+/private/
+/hosts/
+/exports/
+/local/
+*.log
+
+# Local tools, credentials, and machine-specific settings.
+.tools/
+# Local editor state and hidden working folders.
+.*/
+!.github/
+!.githooks/
+.aws/
+.ssh/
+*.pem
+*.key
+*.pfx
+*.p12
+*.kdbx
+credentials.json
+secrets.json

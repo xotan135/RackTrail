@@ -1,0 +1,3 @@
+#!/bin/sh
+# Keep recovery refs, private maps and recognizable credentials off the remote.
+exec pwsh -NoProfile -File "$(git rev-parse --show-toplevel)/scripts/Check-PublishContents.ps1" -Push

@@ -34,6 +34,7 @@ public static class Containment
     public static void Assign(Project p,Node node,string? parentId)
     {
         var parent=p.Nodes.Find(n=>n.Id==parentId);
+        if(!MapEditing.CanMove(p,node)||(parent!=null&&MapEditing.IsLocked(p,parent)))throw new InvalidDataException("Unlock the item and its container before changing membership.");
         if(parentId!=null&&(parent==null||!parent.CanContainNodes||parent.Id==node.Id||p.Ancestors(parent).Any(n=>n.Id==node.Id)))throw new InvalidOperationException("Choose a valid container outside the device's own subtree.");
         var depths=ProjectLimits.ValidateHierarchy(p);
         if(parent!=null)
@@ -59,6 +60,7 @@ public static class Containment
     }
     public static void Move(Project p,Node node,double dx,double dy)
     {
+        if(!MapEditing.CanMove(p,node))return;
         if(!double.IsFinite(dx+dy))return;
         var parent=p.Nodes.Find(n=>n.Id==node.ParentId);
         if(parent!=null)
@@ -71,9 +73,10 @@ public static class Containment
     }
     public static void Resize(Project p,Node node,double width,double height)
     {
+        if(MapEditing.IsLocked(p,node))return;
         if(!double.IsFinite(width+height))return;
         var children=p.Nodes.Where(n=>n.ParentId==node.Id).ToList();
-        double minWidth=node.CanContainNodes?220:100,minHeight=node.CanContainNodes?140:60;
+        double minWidth=node.CanContainNodes?220:node.UseDeviceImage&&!node.ShowDeviceInfo?32:100,minHeight=node.CanContainNodes?120:node.UseDeviceImage?32:60;
         if(children.Count>0){minWidth=Math.Max(minWidth,children.Max(n=>n.X+n.Width-node.X+Padding));minHeight=Math.Max(minHeight,children.Max(n=>n.Y+FullHeight(n)-node.Y+Padding));}
         node.Width=Math.Max(width,minWidth);node.Height=Math.Max(height,minHeight);
         if(!node.CanContainNodes&&!node.UseDeviceImage&&node.Shape==DeviceShape.Circle)node.Height=node.Width=Math.Max(node.Width,node.Height);

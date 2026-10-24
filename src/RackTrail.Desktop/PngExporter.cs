@@ -4,7 +4,7 @@ namespace RackTrail.Desktop;
 
 public static class PngExporter
 {
-    public static void Save(Project p, string path)
+    public static void Save(Project p, string path,bool showConnectionLabels=false)
     {
         var size = VisualExporter.Bounds(p); double scale = Math.Min(1, Math.Min(10000 / size.Width, 10000 / size.Height));
         using var bitmap = new SKBitmap((int)Math.Ceiling(size.Width * scale), (int)Math.Ceiling(size.Height * scale)); using var canvas = new SKCanvas(bitmap); canvas.Clear(SKColor.Parse("#101722")); canvas.Scale((float)scale); canvas.Translate((float)-size.X,(float)-size.Y);
@@ -17,16 +17,44 @@ public static class PngExporter
             void Frame(){if(!n.CanContainNodes&&n.Shape==DeviceShape.Circle)canvas.DrawOval(rect,paint);else canvas.DrawRoundRect(rect,n.Shape==DeviceShape.Rectangle?0:10,n.Shape==DeviceShape.Rectangle?0:10,paint);}
             if(!image){Frame();paint.Style=SKPaintStyle.Stroke;paint.StrokeWidth=1;paint.Color=SKColor.Parse(VisualExporter.Color(n));Frame();}
             canvas.Save(); canvas.ClipRect(rect);
-            float iconSize=image?(float)Math.Max(20,Math.Min(n.Width-24,n.DisplayHeight-58)):20,iconX=image?(float)(n.X+(n.Width-iconSize)/2):(float)n.X+12;
-            bool hasIcon=DeviceIconRenderer.Draw(canvas,n,new SKRect(iconX,(float)n.Y+14,iconX+iconSize,(float)n.Y+14+iconSize));
-            if(!hasIcon&&n.Kind==NodeKind.Printer){hasIcon=true;paint.Style=SKPaintStyle.Stroke;paint.Color=SKColor.Parse(VisualExporter.Color(n));canvas.DrawRect((float)n.X+15,(float)n.Y+16,10,6,paint);canvas.DrawRoundRect(new SKRect((float)n.X+12,(float)n.Y+21,(float)n.X+28,(float)n.Y+29),2,2,paint);canvas.DrawRect((float)n.X+15,(float)n.Y+26,10,7,paint);}
-            double labelX=image?n.X+12:n.X+(hasIcon?38:14);double labelY=image?n.Y+iconSize+34:n.Y+27;Text(n.Name, labelX, labelY, 13, "#edf3fa"); Text(n.IsContainer ? n.Cidr + "  " + n.VlanId : n.VisualDetail, labelX, labelY+21, 11, "#a6b7cf");
-            if(n.IsStack&&n.ShowStackMembers){int row=0;foreach(var member in n.StackMembers.OrderBy(m=>m.Number))Text($"{member.Number:00}  {member.Name} / {member.Role}",n.X+14,n.Y+83+24*row++,11,"#a6b7cf");}
+            var presentation=NodePresentation.Create(n);var icon=presentation.Icon;
+            if(!DeviceIconRenderer.Draw(canvas,n,new SKRect((float)icon.X,(float)icon.Y,(float)(icon.X+icon.Width),(float)(icon.Y+icon.Height))))
+            {
+                var vector=DeviceIcons.Vector(DeviceIcons.TypeKey(n.Kind));
+                if(vector!=null){canvas.Save();canvas.Translate((float)icon.X,(float)icon.Y);canvas.Scale((float)(icon.Width/vector.Width),(float)(icon.Height/vector.Height));paint.Style=SKPaintStyle.Fill;paint.Color=SKColor.Parse(vector.Color);foreach(var pathText in vector.Paths){using var path=SKPath.ParseSvgPathData(pathText);canvas.DrawPath(path,paint);}canvas.Restore();}
+            }
+            foreach(var line in presentation.Labels)
+            {
+                paint.Style=SKPaintStyle.Fill;paint.Color=SKColor.Parse("#edf3fa");paint.TextSize=(float)line.Size;paint.TextAlign=line.Center?SKTextAlign.Center:SKTextAlign.Left;
+                using var face=SKTypeface.FromFamilyName("sans-serif");paint.Typeface=face;
+                var text=line.Text;if(paint.MeasureText(text)>line.Width){while(text.Length>0&&paint.MeasureText(text+"…")>line.Width)text=text[..^1];text+="…";}
+                canvas.DrawText(text,(float)(line.X+(line.Center?line.Width/2:0)),(float)(line.Y+line.Size),paint);
+            }
+            paint.TextAlign=SKTextAlign.Left;
             canvas.Restore();
         }
-        foreach (var n in p.Nodes.Where(n => n.CanContainNodes && p.Visible(n)).OrderBy(n => p.Ancestors(n).Count())) DrawNode(n);
-        foreach (var c in p.Connections) { var r = MapLayout.Route(p, c); paint.Color = SKColor.Parse("#7397c1"); paint.Style = SKPaintStyle.Stroke; paint.StrokeWidth = 2; for (int i = 1; i < r.Count; i++) canvas.DrawLine((float)r[i - 1].X, (float)r[i - 1].Y, (float)r[i].X, (float)r[i].Y, paint); if (r.Count > 1 && c.Kind!=ConnectionKind.Hosting) { var m = r[r.Count / 2]; Text(c.LabelFor(p), m.X + 5, m.Y - 6, 10, "#b7c9e0"); } }
-        foreach (var n in p.Nodes.Where(n => !n.CanContainNodes && p.Visible(n))) DrawNode(n);
+        var captions=ConnectionCaptions.Create(p,p.Connections.Where(c=>showConnectionLabels||ConnectionRouter.ShowLabel(p)));
+        var connections=p.Connections.ToLookup(c=>MapEditing.ConnectionLayer(p,c));
+        foreach(var layer in MapEditing.PaintOrder(p).GroupBy(n=>MapEditing.Layer(p,n)))
+        {
+            foreach(var n in layer.Where(n=>n.CanContainNodes))DrawNode(n);
+            foreach(var c in connections[layer.Key])
+            {
+                var r=MapLayout.Route(p,c);paint.Style=SKPaintStyle.Stroke;
+                foreach(var stroke in new[]{("#101722",5.6f),("#7397c1",1.6f)})
+                {
+                    paint.Color=SKColor.Parse(stroke.Item1);paint.StrokeWidth=stroke.Item2;
+                    for(int i=1;i<r.Count;i++)canvas.DrawLine((float)r[i-1].X,(float)r[i-1].Y,(float)r[i].X,(float)r[i].Y,paint);
+                }
+                if(captions.TryGetValue(c.Id,out var caption))
+                {
+                    var box=caption.Box;paint.Style=SKPaintStyle.Fill;paint.Color=SKColor.Parse("#101722");
+                    canvas.DrawRoundRect(new SKRect((float)box.X,(float)box.Y,(float)(box.X+box.Width),(float)(box.Y+box.Height)),3,3,paint);
+                    Text(caption.Text,box.X+6,box.Y+14,10,"#b7c9e0");
+                }
+            }
+            foreach(var n in layer.Where(n=>!n.CanContainNodes))DrawNode(n);
+        }
         using var image = SKImage.FromBitmap(bitmap); using var data = image.Encode(SKEncodedImageFormat.Png, 100); using var file = File.Create(path); data.SaveTo(file);
     }
 }

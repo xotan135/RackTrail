@@ -1,0 +1,146 @@
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Styles.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="RackBackground">#CFD4DA</SolidColorBrush>
+          <SolidColorBrush x:Key="RackPanel">#DEE2E7</SolidColorBrush>
+          <SolidColorBrush x:Key="RackCard">#E7EAEE</SolidColorBrush>
+          <SolidColorBrush x:Key="RackInput">#D3D9E0</SolidColorBrush>
+          <SolidColorBrush x:Key="RackHover">#C2CCD8</SolidColorBrush>
+          <SolidColorBrush x:Key="RackText">#202D3E</SolidColorBrush>
+          <SolidColorBrush x:Key="RackMuted">#4F6074</SolidColorBrush>
+          <SolidColorBrush x:Key="RackBorder">#AFBAC7</SolidColorBrush>
+          <SolidColorBrush x:Key="RackAccent">#3267A4</SolidColorBrush>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="RackBackground">#141C28</SolidColorBrush>
+          <SolidColorBrush x:Key="RackPanel">#1C2736</SolidColorBrush>
+          <SolidColorBrush x:Key="RackCard">#233143</SolidColorBrush>
+          <SolidColorBrush x:Key="RackInput">#172231</SolidColorBrush>
+          <SolidColorBrush x:Key="RackHover">#31455D</SolidColorBrush>
+          <SolidColorBrush x:Key="RackText">#DDE6F2</SolidColorBrush>
+          <SolidColorBrush x:Key="RackMuted">#9CAFC6</SolidColorBrush>
+          <SolidColorBrush x:Key="RackBorder">#3B4E65</SolidColorBrush>
+          <SolidColorBrush x:Key="RackAccent">#4E84C2</SolidColorBrush>
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Styles.Resources>
+  <Style Selector=":is(Window)">
+    <Setter Property="Background" Value="{DynamicResource RackBackground}"/>
+    <Setter Property="Foreground" Value="{DynamicResource RackText}"/>
+    <Setter Property="FontFamily" Value="Inter"/>
+    <Setter Property="FontSize" Value="13"/>
+  </Style>
+  <Style Selector="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource RackText}"/>
+  </Style>
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{DynamicResource RackMuted}"/>
+    <Setter Property="TextWrapping" Value="Wrap"/>
+  </Style>
+  <Style Selector="TextBlock.section">
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="LetterSpacing" Value="1.4"/>
+    <Setter Property="Foreground" Value="{DynamicResource RackMuted}"/>
+  </Style>
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{DynamicResource RackCard}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource RackBorder}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="14"/>
+    <Setter Property="Padding" Value="20"/>
+  </Style>
+  <Style Selector="Border.panel">
+    <Setter Property="Background" Value="{DynamicResource RackPanel}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource RackBorder}"/>
+  </Style>
+  <Style Selector="Button">
+    <Setter Property="Background" Value="{DynamicResource RackCard}"/>
+    <Setter Property="Foreground" Value="{DynamicResource RackText}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource RackBorder}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="14,9"/>
+    <Setter Property="MinHeight" Value="36"/>
+    <Setter Property="FontSize" Value="12"/>
+  </Style>
+  <Style Selector="Button /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource RackCard}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource RackBorder}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+  </Style>
+  <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource RackHover}"/>
+  </Style>
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{DynamicResource RackAccent}"/>
+    <Setter Property="Foreground" Value="#F1F5FB"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+  <Style Selector="Button.primary /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource RackAccent}"/>
+  </Style>
+  <Style Selector="Button.primary TextBlock">
+    <Setter Property="Foreground" Value="#F1F5FB"/>
+  </Style>
+  <Style Selector="Button:disabled">
+    <Setter Property="Opacity" Value="0.5"/>
+  </Style>
+  <Style Selector="TextBox">
+    <Setter Property="Background" Value="{DynamicResource RackInput}"/>
+    <Setter Property="Foreground" Value="{DynamicResource RackText}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource RackBorder}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="11,9"/>
+    <Setter Property="MinHeight" Value="38"/>
+  </Style>
+  <Style Selector="TextBox /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{DynamicResource RackInput}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource RackBorder}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+  </Style>
+  <Style Selector="ComboBox">
+    <Setter Property="Background" Value="{DynamicResource RackInput}"/>
+    <Setter Property="Foreground" Value="{DynamicResource RackText}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource RackBorder}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="11,8"/>
+    <Setter Property="MinHeight" Value="38"/>
+  </Style>
+  <Style Selector="ComboBox /template/ Border#Background">
+    <Setter Property="Background" Value="{DynamicResource RackInput}"/>
+  </Style>
+  <Style Selector="ComboBoxItem:pointerover">
+    <Setter Property="Background" Value="{DynamicResource RackHover}"/>
+  </Style>
+  <Style Selector="CheckBox">
+    <Setter Property="Foreground" Value="{DynamicResource RackText}"/>
+  </Style>
+  <Style Selector="TabItem">
+    <Setter Property="Foreground" Value="{DynamicResource RackMuted}"/>
+    <Setter Property="FontSize" Value="14"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="Padding" Value="18,13"/>
+  </Style>
+  <Style Selector="TabItem:selected">
+    <Setter Property="Foreground" Value="{DynamicResource RackText}"/>
+  </Style>
+  <Style Selector="Expander">
+    <Setter Property="Foreground" Value="{DynamicResource RackText}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+  </Style>
+  <Style Selector="Expander /template/ ToggleButton">
+    <Setter Property="Background" Value="{DynamicResource RackInput}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource RackBorder}"/>
+    <Setter Property="Foreground" Value="{DynamicResource RackText}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+  </Style>
+  <Style Selector="Expander /template/ ToggleButton /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource RackInput}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource RackBorder}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+  </Style>
+</Styles>

@@ -1,4 +1,4 @@
-param([string]$OutputDirectory = 'artifacts/releases', [string]$CompilerPath = '')
+param([string]$OutputDirectory = 'artifacts/releases', [string]$CompilerPath = '', [string]$DeviceImagesDirectory = '')
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path -Parent $PSScriptRoot
 [xml]$taskProject = Get-Content -LiteralPath (Join-Path $taskRoot 'src/RackTrail.Desktop/RackTrail.csproj') -Raw
@@ -11,7 +11,7 @@ if (!$CompilerPath) {
 }
 if (!(Test-Path -LiteralPath $CompilerPath)) { throw 'Install Inno Setup 6 or pass -CompilerPath with the path to ISCC.exe.' }
 $taskOutput = Join-Path $OutputDirectory $taskVersion
-& (Join-Path $PSScriptRoot 'Publish-Windows.ps1') -OutputDirectory $taskOutput
+& (Join-Path $PSScriptRoot 'Publish-Windows.ps1') -OutputDirectory $taskOutput -DeviceImagesDirectory $DeviceImagesDirectory
 $taskAbsoluteOutput = [IO.Path]::GetFullPath((Join-Path $taskRoot $taskOutput))
 $taskRelease = Join-Path $taskAbsoluteOutput 'RackTrail-win-x64'
 $taskExeVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $taskRelease 'RackTrail.exe')).ProductVersion.Split('+')[0]

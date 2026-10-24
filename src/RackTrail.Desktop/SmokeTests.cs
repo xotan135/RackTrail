@@ -8,6 +8,7 @@ public static class SmokeTests
     {
         Directory.CreateDirectory(directory); int count = 0;
         void Check(bool condition, string name) { if (!condition) throw new Exception(name); count++; Console.WriteLine("PASS " + name); }
+        EditingWorkflowChecks.Run(Check);
         var vm = new EditorViewModel(); Check(vm.Project.Nodes.Count==0&&!vm.Dirty,"Launch defaults to a clean blank map");vm.Replace(SampleNetwork.Create()); var subnet = vm.Add(NodeKind.Subnet, 100, 500); vm.Edit(() => { subnet.Cidr = "192.168.50.0/24"; subnet.VlanId = "50"; subnet.Name = "Lab subnet"; }); var device = vm.Add(NodeKind.Server, 150, 580); vm.Edit(() => { device.ParentId = subnet.Id; device.Name = "Lab server"; device.Addresses = "192.168.50.10"; }); Check(NetworkValidator.Validate(vm.Project).Count == 0, "Create subnet, device, membership and IP");
         var core = vm.Project.Nodes.First(n => n.Id == "core"); vm.Connect(core); vm.Connect(device); Check(vm.Project.Connections.Any(c => c.From == core.Id && c.To == device.Id), "Connect devices");
         vm.Edit(() => device.Role = "Lab services"); vm.Undo(); Check(vm.Project.Nodes.First(n => n.Id == device.Id).Role == "", "Undo property edit"); vm.Redo(); Check(vm.Project.Nodes.First(n => n.Id == device.Id).Role == "Lab services", "Redo property edit");
@@ -63,7 +64,8 @@ public static class SmokeTests
         var savedPhones=await ProjectStorage.LoadAsync(Path.Combine(directory,"phones.networkmap.json"));
         PngExporter.Save(savedPhones,Path.Combine(directory,"phones.png"));
         using var phoneBitmap=SKBitmap.Decode(Path.Combine(directory,"phones.png"));
-        Check(phoneBitmap!=null&&Enumerable.Range((int)phones.X+12,20).Any(x=>Enumerable.Range((int)phones.Y+14,20).Any(y=>phoneBitmap.GetPixel(x,y).Blue>150&&phoneBitmap.GetPixel(x,y).Red>80)),"Reopened Phones card renders its symbol in PNG");
+        var savedPhone=savedPhones.Nodes.Single(n=>n.Kind==NodeKind.Phones);var phoneIcon=NodePresentation.Create(savedPhone).Icon;var phoneBounds=VisualExporter.Bounds(savedPhones);
+        Check(phoneBitmap!=null&&Enumerable.Range((int)(phoneIcon.X-phoneBounds.X),(int)phoneIcon.Width).Any(x=>Enumerable.Range((int)(phoneIcon.Y-phoneBounds.Y),(int)phoneIcon.Height).Any(y=>phoneBitmap.GetPixel(x,y).Blue>150&&phoneBitmap.GetPixel(x,y).Red>80)),"Reopened Phones card renders its centered symbol in PNG");
         var discoveryVm=new EditorViewModel();
         discoveryVm.Edit(()=>DiscoveryImport.Add(discoveryVm.Project,[new("192.168.99.10","test-device",4),new("192.168.99.11","",2)]));
         Check(discoveryVm.Project.Nodes.Count==2&&discoveryVm.Project.Nodes.All(n=>n.Kind==NodeKind.Device),"Review import creates generic device cards without inferred connections");
@@ -83,6 +85,23 @@ public static class SmokeTests
         Check(BrandUiChecks.EmbeddedImageGuardVerified,"Avalonia renderer refuses oversized embedded PNG");
         boundedVm.RunUserAction(boundedVm.Paste);Check(boundedVm.Project.Nodes.Count==ProjectLimits.MaximumNodes&&boundedVm.Status.Contains("2000"),"User paste rejects excess nodes with a message");
         boundedVm.RunUserAction(()=>boundedVm.Add(NodeKind.Device));Check(boundedVm.Project.Nodes.Count==ProjectLimits.MaximumNodes&&!boundedVm.Dirty,"User add rejects excess nodes without unhandled exception or dirtying map");
+        Check(BrandUiChecks.ScanReviewVerified,"Scan UI configures SNMP, corrects type, creates subnet with parent, and undoes as one change");
+        var classificationVm=new EditorViewModel();
+        var identified=classificationVm.Add(NodeKind.Device);identified.Addresses="192.0.2.12";
+        classificationVm.Edit(()=>DiscoveryImport.Update(classificationVm.Project,[new("192.0.2.12","cam.example",2){Facts=new(){SystemDescription="network camera"}}]));
+        Check(identified.Kind==NodeKind.IoT&&identified.Classification?.Confidence==ClassificationConfidence.Medium,"Discovery update applies classification to an existing device");
+        classificationVm.Edit(()=>DeviceClassifier.SetManual(identified,NodeKind.Printer));
+        classificationVm.Edit(()=>DiscoveryImport.Update(classificationVm.Project,[new("192.0.2.12","cam.example",2){Facts=new(){SystemDescription="network camera"}}]));
+        Check(identified.Kind==NodeKind.Printer&&identified.Classification?.AutomaticType==NodeKind.IoT,"Editor rescan preserves correction and updates automatic evidence");
+        classificationVm.Undo();classificationVm.Undo();
+        Check(classificationVm.Selected?.Kind==NodeKind.IoT&&classificationVm.Selected.Classification?.ManualType==null,"Undo restores classification and removes manual correction");
+        classificationVm.TypeFilter=NodeKind.Printer;
+        Check(!classificationVm.Visible(classificationVm.Selected!)&&classificationVm.MatchesFilter(new(){Kind=NodeKind.Subnet}),"Type filtering hides unmatched devices while retaining containers");
+        classificationVm.TypeFilter=NodeKind.IoT;classificationVm.ConfidenceFilter=ClassificationConfidence.High;
+        Check(!classificationVm.Visible(classificationVm.Selected!),"Confidence filter applies to map devices");
+        var newTypes=new Project{Nodes=new[]{NodeKind.Phone,NodeKind.IoT,NodeKind.Device}.Select((kind,i)=>new Node{Id="type-"+i,Name=DeviceClassifier.Label(kind),Kind=kind,X=i*220}).ToList()};
+        PngExporter.Save(newTypes,Path.Combine(directory,"classification-types.png"));
+        Check(VisualExporter.Svg(newTypes).Contains("data-device-icon=\"iot\"")&&VisualExporter.Svg(newTypes).Contains("data-device-icon=\"unknown\""),"New device symbols render in PNG and SVG");
         Console.WriteLine($"{count} desktop workflow checks passed.");
     }
 }

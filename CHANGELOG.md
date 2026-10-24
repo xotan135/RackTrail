@@ -1,5 +1,57 @@
 # Version history
 
+## 1.11.1 — 2026-10-23
+
+- Keep obstacle avoidance on irregular large maps by routing connections on smaller local grids when the global grid exceeds its budget.
+- Protect complete container headings, including subnet and VLAN text, and keep connection captions out of device names and other traces.
+- Increase spacing between nearby parallel routes and favor simpler paths and site gutters.
+- Add visible gaps at line crossings and draw highlighted links last so connections are easier to follow.
+- Apply readability improvements to the canvas, PNG, SVG, and HTML without moving saved devices.
+
+## 1.11.0 — 2026-10-23
+
+- Add standalone HTML export with embedded device pictures and the same layout and routing as SVG/PNG.
+- Add browser zoom, drag-to-pan, Fit map, actual-size view, keyboard controls, and Print / PDF.
+- Keep the exported viewer offline, with no external scripts, fonts, images, or service requests.
+
+## 1.10.0 — 2026-10-22
+
+- Route connections around devices and container headings with separate attachment points, lane and crossing penalties, and a preference for gaps between unrelated sites.
+- Add Arrange > Reroute connections without moving devices or replacing custom paths.
+- Reduce overview label clutter, reveal connection labels on hover/selection, and highlight links related to selected devices or containers.
+- Apply the same routing and automatic large-map label cleanup to PNG and SVG exports.
+- Center and scale device labels as shapes and dimensions change.
+- Place model pictures beside device information, preserving image proportions.
+- Add live image-size adjustment and an image-only mode for compact APs.
+- Cache decoded device pictures for smooth resizing on dense maps.
+- Recognize NanoStation AC and UniFi AP model image names and retain larger source image detail.
+- Exclude local Nagios host configuration files from publication.
+
+## 1.9.0 — 2026-10-22
+
+- Show nested site/container paths, VLAN IDs and CIDRs in membership, host and discovery pickers.
+- Allow empty containers to resize to 120 pixels high; preserve space for contents.
+- Match click targeting to drawing order and place new items above existing objects.
+- Add persistent Bring to front / Send to back controls and open-area insertion near the current view.
+- Add fit-to-contents, inherited geometry locks, six alignment modes, equal spacing, and drag alignment guides.
+- Add batch subnet names, outline colors, and sizes with atomic Undo/Redo.
+- Add search-to-zoom with ancestor expansion and compact/expanded map controls.
+- Preserve layers and colors in SVG/PNG exports and maintain compatibility with older maps.
+
+
+## 1.8.0 — 2026-10-20
+
+- Refresh the interface with rounded controls, clearer panels, muted blue accents, and a softer grey light theme with stronger icon contrast.
+- Make network scope and SNMP Off/v1/v2c selection visible in Scan setup.
+- Correct device types during scan review, assign existing containers, or create a subnet under a chosen parent in one undoable import.
+- Validate subnet membership before importing and give unassigned devices distinct initial positions.
+
+## 1.7.0 — 2026-10-20
+
+- Add optional read-only SNMP/LLDP/CDP and TCP service discovery with bounded requests, cancellation and session caching.
+- Classify device types with confidence, evidence, hardware/OS details and separate roles; preserve manual corrections across rescans.
+- Add individual phone, IoT and Unknown symbols, discovery details, map filters and a device/confidence legend.
+
 ## 1.6.1 — 2026-10-18
 
 - Bound project node counts and container depth, repair containment iteratively, and roll back rejected edits.

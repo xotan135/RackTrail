@@ -35,23 +35,38 @@ public static class ScanTargets
     }
 }
 
-public record DiscoveredHost(string Address,string Hostname,long ResponseTime);
+public record DiscoveredHost(string Address,string Hostname,long ResponseTime)
+{
+    public DiscoveryFacts? Facts { get; init; }
+    public DeviceClassification? Classification { get; set; }
+}
 public record ScanProgress(int Completed,int Total,int Found,int Errors);
 public record ScanReport(IReadOnlyList<DiscoveredHost> Hosts,int Completed,int Errors,bool Cancelled);
 public static class NetworkDiscovery
 {
     public static async Task<ScanReport> ScanAsync(IReadOnlyList<IPAddress> targets,IProgress<ScanProgress>? progress=null,CancellationToken cancellationToken=default,
-        Func<IPAddress,CancellationToken,Task<long?>>? probe=null,Func<IPAddress,CancellationToken,Task<string>>? resolve=null)
+        Func<IPAddress,CancellationToken,Task<long?>>? probe=null,Func<IPAddress,CancellationToken,Task<string>>? resolve=null,DiscoverySession? discovery=null,Project? inventory=null)
     {
         if(targets.Count==0||targets.Count>ScanTargets.MaximumHosts||targets.Any(a=>a.AddressFamily!=AddressFamily.InterNetwork))throw new ArgumentException("Choose up to 1024 IPv4 targets.");
+        _=ScanTargets.Parse(string.Join(",",targets.Select(a=>a.ToString())));
         probe??=async(address,ct)=>{using var ping=new Ping();var reply=await ping.SendPingAsync(address,800).WaitAsync(ct);return reply.Status==IPStatus.Success?reply.RoundtripTime:null;};
         resolve??=async(address,ct)=>{try{return (await Dns.GetHostEntryAsync(address.ToString()).WaitAsync(TimeSpan.FromMilliseconds(1200),ct)).HostName;}catch(Exception ex)when(ex is SocketException or TimeoutException or ArgumentException){return "";}};
         var hosts=new List<DiscoveredHost>();var gate=new object();int completed=0,errors=0;bool cancelled=false;
-        try{await Parallel.ForEachAsync(targets,new ParallelOptions{MaxDegreeOfParallelism=16,CancellationToken=cancellationToken},async(address,ct)=>{
-            try{var time=await probe(address,ct);if(time.HasValue){string hostname=await resolve(address,ct);lock(gate)hosts.Add(new(address.ToString(),hostname,time.Value));}}
+        try{await Parallel.ForEachAsync(targets,new ParallelOptions{MaxDegreeOfParallelism=8,CancellationToken=cancellationToken},async(address,ct)=>{
+            try{
+                long? time=null;
+                try{time=await probe(address,ct);}catch(Exception ex)when(ex is PingException or SocketException){lock(gate)errors++;}
+                if(time.HasValue||discovery?.CanProbeWithoutPing==true){
+                    string hostname=time.HasValue?await resolve(address,ct):"";
+                    var facts=discovery==null?new DiscoveryFacts{Hostname=hostname,Limitations=["Ping/DNS only; management and service checks not configured."]}:await discovery.CollectAsync(address,hostname,ct);
+                    if(time.HasValue||facts.OpenPorts.Count>0||facts.ManagementResponded)
+                        lock(gate)hosts.Add(new(address.ToString(),facts.Hostname.Length>0?facts.Hostname:hostname,time??-1){Facts=facts});
+                }
+            }
             catch(Exception ex)when(ex is PingException or SocketException or InvalidOperationException){lock(gate)errors++;}
             finally{lock(gate){completed++;progress?.Report(new(completed,targets.Count,hosts.Count,errors));}}
         });}catch(OperationCanceledException)when(cancellationToken.IsCancellationRequested){cancelled=true;}
+        DiscoverySession.MatchNeighbors(hosts,inventory);
         return new(hosts.OrderBy(h=>IpNetwork.Number(IPAddress.Parse(h.Address))).ToList(),completed,errors,cancelled);
     }
 }
@@ -65,8 +80,21 @@ public static class DiscoveryImport
         if(subnetId!=null&&(subnet?.Kind!=NodeKind.Subnet||!IpNetwork.TryParse(subnet.Cidr,out _)))throw new ArgumentException("Choose a subnet with a valid CIDR.");
         var added=new List<Node>();
         foreach(var host in hosts){if(!IPAddress.TryParse(host.Address,out var address)||address.AddressFamily!=AddressFamily.InterNetwork)continue;if(subnet!=null&&(!IpNetwork.TryParse(subnet.Cidr,out var net)||!net!.Contains(address)))continue;if(Exists(project,host.Address))continue;
-            var node=new Node{Kind=NodeKind.Device,Name=host.Hostname.Length>0?host.Hostname:host.Address,Hostname=host.Hostname,Addresses=host.Address,Notes="Discovered by ICMP ping. Device type has not been identified.",X=subnet?.X+20??100+(added.Count%4)*210,Y=subnet?.Y+70??100+(added.Count/4)*110};project.Nodes.Add(node);if(subnet!=null)Containment.Assign(project,node,subnet.Id);added.Add(node);
+            var node=new Node{Kind=NodeKind.Device,Name=host.Hostname.Length>0?host.Hostname:host.Address,Hostname=host.Hostname,Addresses=host.Address,Notes="Discovered on explicitly selected scan targets.",X=subnet?.X+20??100+(added.Count%4)*210,Y=subnet?.Y+70??100+(added.Count/4)*110};DeviceClassifier.Apply(node,host.Classification??DeviceClassifier.Classify(host.Facts??new(){Hostname=host.Hostname,Limitations=["Ping/DNS only; no management evidence."]}));project.Nodes.Add(node);if(subnet!=null)Containment.Assign(project,node,subnet.Id);added.Add(node);
         }
         return added;
+    }
+    public static IReadOnlyList<Node> Update(Project project,IEnumerable<DiscoveredHost> hosts,string? subnetId=null)
+    {
+        var changed=new List<Node>();
+        foreach(var host in hosts) {
+            var node=project.Nodes.FirstOrDefault(n=>!n.IsContainer&&n.Ips.Any(ip=>IPAddress.TryParse(ip,out var parsed)&&IPAddress.TryParse(host.Address,out var candidate)&&parsed.Equals(candidate)));
+            if(node==null){changed.AddRange(Add(project,[host],subnetId));continue;}
+            var assessment=DeviceClassifier.Classify(host.Facts??new(){Hostname=host.Hostname},node);
+            DeviceClassifier.Apply(node,assessment);
+            if(node.Hostname.Length==0)node.Hostname=host.Hostname;
+            changed.Add(node);
+        }
+        return changed;
     }
 }
