@@ -3,6 +3,10 @@ $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path -Parent $PSScriptRoot
 & (Join-Path $PSScriptRoot 'Check-PublishContents.ps1')
 $releaseFolder = Join-Path $taskRoot "$OutputDirectory/RackTrail-$Runtime"
+# Clean resolves package assets too. CI's solution restore does not include a RID,
+# so restore the self-contained runtime target before cleaning or publishing it.
+dotnet restore (Join-Path $taskRoot 'src/RackTrail.Desktop/RackTrail.csproj') -r $Runtime -p:SelfContained=true
+if ($LASTEXITCODE -ne 0) { throw 'Release runtime restore failed.' }
 # Recompile from clean intermediates so older symbol-bearing assemblies cannot be reused.
 dotnet clean (Join-Path $taskRoot 'src/RackTrail.Desktop/RackTrail.csproj') -c Release -r $Runtime -p:DebugType=None -p:DebugSymbols=false
 if ($LASTEXITCODE -ne 0) { throw 'Release clean failed.' }
@@ -12,7 +16,7 @@ foreach ($taskProjectName in @('RackTrail.Core', 'RackTrail.Desktop')) {
         Get-ChildItem -LiteralPath $taskIntermediateFolder -File -Filter '*.pdb' -Recurse | Remove-Item -Force
     }
 }
-dotnet publish (Join-Path $taskRoot 'src/RackTrail.Desktop/RackTrail.csproj') -c Release -r $Runtime --self-contained true -p:UseSharedCompilation=false -p:DebugType=None -p:DebugSymbols=false "-p:PathMap=$taskRoot=/_/RackTrail" -o $releaseFolder
+dotnet publish (Join-Path $taskRoot 'src/RackTrail.Desktop/RackTrail.csproj') -c Release -r $Runtime --self-contained true --no-restore -p:UseSharedCompilation=false -p:DebugType=None -p:DebugSymbols=false "-p:PathMap=$taskRoot=/_/RackTrail" -o $releaseFolder
 if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
 # Older builds may have left debugging files in a reused output folder.
 Get-ChildItem -LiteralPath $releaseFolder -File -Filter '*.pdb' | Remove-Item -Force
