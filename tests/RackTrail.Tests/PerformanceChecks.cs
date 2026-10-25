@@ -4,6 +4,21 @@ internal static class PerformanceChecks
 {
     public static async Task Run(Action<bool, string> check)
     {
+        var cachedProject = new Project { Nodes = [new() { Id = "cache-a" }, new() { Id = "cache-b", X = 400 }],
+            Connections = [new() { Id = "cached-link", From = "cache-a", To = "cache-b", Route = [new(180, 38), new(400, 38)] }] };
+        var cachedLink = cachedProject.Connections[0];
+        var legacyRoute = MapLayout.Route(cachedProject, cachedLink);
+        var immutableRoutes = ConnectionRouter.Snapshot(cachedProject);
+        check(ReferenceEquals(legacyRoute, MapLayout.Route(cachedProject, cachedLink)), "Legacy route cache retains list identity for unchanged maps");
+        legacyRoute.Clear();
+        check(immutableRoutes.Route(cachedLink.Id).Count == 2 && cachedLink.Route.Count == 2,
+            "Mutating a legacy route list cannot corrupt immutable snapshots or saved custom routes");
+        cachedProject.Nodes[0].X += 10;
+        var refreshedRoute = MapLayout.Route(cachedProject, cachedLink);
+        check(!ReferenceEquals(legacyRoute, refreshedRoute) && refreshedRoute.Count == 2,
+            "Geometry changes replace legacy cached lists and restore their computed points");
+        ConnectionRouter.Invalidate(cachedProject);
+        check(!ReferenceEquals(refreshedRoute, MapLayout.Route(cachedProject, cachedLink)), "Explicit invalidation replaces legacy route references");
         var project = new Project();
         var container = new Node { Id = "container", Kind = NodeKind.Site, Width = 800, Height = 500 };
         var node = new Node { Id = "child", Kind = NodeKind.AccessPoint, ParentId = container.Id, X = 40, Y = 90 };

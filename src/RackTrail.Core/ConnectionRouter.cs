@@ -5,7 +5,13 @@ namespace RackTrail.Core;
 /// <summary>Shared, deterministic orthogonal routing for the editor and both visual exports.</summary>
 public static class ConnectionRouter
 {
-    private sealed class Cache { public int Stamp; public bool Ready; public RoutingSnapshot? Snapshot; }
+    private sealed class Cache
+    {
+        public int Stamp;
+        public bool Ready;
+        public RoutingSnapshot? Snapshot;
+        public readonly Dictionary<string, List<MapPoint>> CompatibilityRoutes = [];
+    }
     private static readonly ConditionalWeakTable<Project,Cache> Caches = new();
     private record Box(double Left,double Top,double Right,double Bottom);
     private record Port(MapPoint Edge,MapPoint Stub,int Axis);
@@ -29,11 +35,30 @@ public static class ConnectionRouter
     }
     private static double Distance(MapPoint a,MapPoint b)=>Math.Abs(a.X-b.X)+Math.Abs(a.Y-b.Y);
     // Compatibility for callers mutating POCOs directly. UI uses revision-owned snapshots instead.
-    public static List<MapPoint> Route(Project p,Connection c) => Snapshot(p).Route(c.Id).ToList();
-    public static RoutingSnapshot Snapshot(Project p,CancellationToken cancellation=default)
+    public static List<MapPoint> Route(Project p,Connection c)
+    {
+        var cache=GetCache(p);
+        lock(cache)
+        {
+            // Preserve the legacy List API's stable identity without exposing the immutable snapshot's storage.
+            if(!cache.CompatibilityRoutes.TryGetValue(c.Id,out var route))
+                cache.CompatibilityRoutes[c.Id]=route=cache.Snapshot!.Route(c.Id).ToList();
+            return route;
+        }
+    }
+    public static RoutingSnapshot Snapshot(Project p,CancellationToken cancellation=default) => GetCache(p,cancellation).Snapshot!;
+    private static Cache GetCache(Project p,CancellationToken cancellation=default)
     {
         var cache=Caches.GetOrCreateValue(p);int stamp=Fingerprint(p);
-        lock(cache){if(!cache.Ready||cache.Stamp!=stamp){cache.Snapshot=Compute(p,cancellation);cache.Stamp=stamp;cache.Ready=true;}return cache.Snapshot!;}
+        lock(cache)
+        {
+            if(!cache.Ready||cache.Stamp!=stamp)
+            {
+                var snapshot=Compute(p,cancellation);
+                cache.Snapshot=snapshot;cache.CompatibilityRoutes.Clear();cache.Stamp=stamp;cache.Ready=true;
+            }
+            return cache;
+        }
     }
     private static int Fingerprint(Project p)
     {
