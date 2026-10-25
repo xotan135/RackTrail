@@ -102,6 +102,7 @@ public static class SmokeTests
         var newTypes=new Project{Nodes=new[]{NodeKind.Phone,NodeKind.IoT,NodeKind.Device}.Select((kind,i)=>new Node{Id="type-"+i,Name=DeviceClassifier.Label(kind),Kind=kind,X=i*220}).ToList()};
         PngExporter.Save(newTypes,Path.Combine(directory,"classification-types.png"));
         Check(VisualExporter.Svg(newTypes).Contains("data-device-icon=\"iot\"")&&VisualExporter.Svg(newTypes).Contains("data-device-icon=\"unknown\""),"New device symbols render in PNG and SVG");
+        PerformanceWorkflowChecks.Run(Check);
         Console.WriteLine($"{count} desktop workflow checks passed.");
     }
 }

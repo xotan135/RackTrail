@@ -8,26 +8,26 @@ public static class Containment
     public static IEnumerable<Node> Subtree(Project p,Node node) => p.Nodes.Where(n=>n.Id==node.Id||p.Ancestors(n).Any(a=>a.Id==node.Id));
     private static double FullHeight(Node n)=>n.CanContainNodes?n.Height:n.DisplayHeight;
     public static bool IsInside(Node node,Node parent)=>node.X>=parent.X+Padding-.001&&node.Y>=parent.Y+Header-.001&&node.X+node.Width<=parent.X+parent.Width-Padding+.001&&node.Y+FullHeight(node)<=parent.Y+parent.Height-Padding+.001;
-    private static void Translate(Project p,Node node,double dx,double dy)
+    private static void Translate(Project p,Node node,double dx,double dy,SceneIndex? index=null)
     {
         if(Math.Abs(dx)<.00001&&Math.Abs(dy)<.00001)return;
-        var ids=Subtree(p,node).Select(n=>n.Id).ToHashSet();foreach(var n in p.Nodes.Where(n=>ids.Contains(n.Id))){n.X+=dx;n.Y+=dy;}
+        var ids=(index==null?Subtree(p,node):p.Nodes.Where(n=>n==node||index.Parents[n.Id].Contains(node))).Select(n=>n.Id).ToHashSet();foreach(var n in p.Nodes.Where(n=>ids.Contains(n.Id))){n.X+=dx;n.Y+=dy;}
         foreach(var c in p.Connections.Where(c=>ids.Contains(c.From)||ids.Contains(c.To)))c.Route=[];
     }
-    private static void FitParent(Project p,Node node)
+    private static void FitParent(Project p,Node node,SceneIndex? index=null)
     {
-        ProjectLimits.ValidateHierarchy(p);
-        var nodes=p.Nodes.ToDictionary(n=>n.Id,StringComparer.Ordinal);
+        if(index==null)ProjectLimits.ValidateHierarchy(p);
+        var nodes=index?.Nodes??p.Nodes.ToDictionary(n=>n.Id,StringComparer.Ordinal);
         int remaining=ProjectLimits.MaximumContainmentDepth;
         while(node.ParentId is {} parentId&&nodes.TryGetValue(parentId,out var parent))
         {
             if(remaining--==0)throw new InvalidDataException("Container nesting limit exceeded.");
             double oldWidth=parent.Width,oldHeight=parent.Height;
             parent.Width=Math.Max(parent.Width,node.Width+2*Padding);parent.Height=Math.Max(parent.Height,FullHeight(node)+Header+Padding);
-            if(parent.Width!=oldWidth||parent.Height!=oldHeight)foreach(var c in p.Connections.Where(c=>c.From==parent.Id||c.To==parent.Id))c.Route=[];
+            if(parent.Width!=oldWidth||parent.Height!=oldHeight)foreach(var c in index==null?p.Connections.Where(c=>c.From==parent.Id||c.To==parent.Id):index.Incident[parent.Id])c.Route=[];
             double x=Math.Clamp(node.X,parent.X+Padding,parent.X+parent.Width-Padding-node.Width);
             double y=Math.Clamp(node.Y,parent.Y+Header,parent.Y+parent.Height-Padding-FullHeight(node));
-            Translate(p,node,x-node.X,y-node.Y);
+            Translate(p,node,x-node.X,y-node.Y,index);
             node=parent;
         }
     }
@@ -71,17 +71,17 @@ public static class Containment
         }
         Translate(p,node,dx,dy);
     }
-    public static void Resize(Project p,Node node,double width,double height)
+    public static void Resize(Project p,Node node,double width,double height,SceneIndex? index=null)
     {
-        if(MapEditing.IsLocked(p,node))return;
+        if(index==null?MapEditing.IsLocked(p,node):node.Locked||index.Parents[node.Id].Any(a=>a.Locked))return;
         if(!double.IsFinite(width+height))return;
-        var children=p.Nodes.Where(n=>n.ParentId==node.Id).ToList();
+        var children=(index==null?p.Nodes.Where(n=>n.ParentId==node.Id):index.Children[node.Id]).ToList();
         double minWidth=node.CanContainNodes?220:node.UseDeviceImage&&!node.ShowDeviceInfo?32:100,minHeight=node.CanContainNodes?120:node.UseDeviceImage?32:60;
         if(children.Count>0){minWidth=Math.Max(minWidth,children.Max(n=>n.X+n.Width-node.X+Padding));minHeight=Math.Max(minHeight,children.Max(n=>n.Y+FullHeight(n)-node.Y+Padding));}
         node.Width=Math.Max(width,minWidth);node.Height=Math.Max(height,minHeight);
         if(!node.CanContainNodes&&!node.UseDeviceImage&&node.Shape==DeviceShape.Circle)node.Height=node.Width=Math.Max(node.Width,node.Height);
-        FitParent(p,node);
-        foreach(var c in p.Connections.Where(c=>c.From==node.Id||c.To==node.Id))c.Route=[];
+        FitParent(p,node,index);
+        foreach(var c in index==null?p.Connections.Where(c=>c.From==node.Id||c.To==node.Id):index.Incident[node.Id])c.Route=[];
     }
     public static void Repair(Project p)
     {

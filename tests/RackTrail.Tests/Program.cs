@@ -172,5 +172,6 @@ DiscoveryReviewChecks.Run(Assert);
 EditingChecks.Run(Assert);
 PresentationChecks.Run(Assert);
 RoutingChecks.Run(Assert);
+await PerformanceChecks.Run(Assert);
 HtmlExportChecks.Run(Assert);
 Console.WriteLine($"\n{checks} checks passed.");

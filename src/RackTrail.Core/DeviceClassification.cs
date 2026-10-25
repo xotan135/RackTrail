@@ -6,6 +6,7 @@ public enum EvidenceSource { Hostname, SnmpSystem, SnmpCapabilities, Interfaces,
 public sealed record DeviceEvidence(EvidenceSource Source, string Detail, NodeKind SuggestedType = NodeKind.Device, int Weight = 0, string Role = "");
 public sealed class DeviceClassification
 {
+    internal DeviceClassification SnapshotCopy(){var copy=(DeviceClassification)MemberwiseClone();copy.Roles=Roles.ToList();copy.Evidence=Evidence.ToList();copy.Limitations=Limitations.ToList();copy.Neighbors=Neighbors.ToList();return copy;}
     public NodeKind AutomaticType { get; set; } = NodeKind.Device;
     public NodeKind? ManualType { get; set; }
     public ClassificationConfidence Confidence { get; set; }

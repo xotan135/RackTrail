@@ -4,14 +4,16 @@ namespace RackTrail.Desktop;
 
 public static class PngExporter
 {
-    public static void Save(Project p, string path,bool showConnectionLabels=false)
+    public static void Save(Project p, string path,bool showConnectionLabels=false,CancellationToken cancellation=default)
     {
-        var size = VisualExporter.Bounds(p); double scale = Math.Min(1, Math.Min(10000 / size.Width, 10000 / size.Height));
+        var routing=ConnectionRouter.Snapshot(p,cancellation);
+        var size = VisualExporter.Bounds(p,routing); double scale = Math.Min(1, Math.Min(10000 / size.Width, 10000 / size.Height));
         using var bitmap = new SKBitmap((int)Math.Ceiling(size.Width * scale), (int)Math.Ceiling(size.Height * scale)); using var canvas = new SKCanvas(bitmap); canvas.Clear(SKColor.Parse("#101722")); canvas.Scale((float)scale); canvas.Translate((float)-size.X,(float)-size.Y);
         using var paint = new SKPaint { IsAntialias = true };
         void Text(string value, double x, double y, int font, string color) { paint.Style = SKPaintStyle.Fill; paint.Color = SKColor.Parse(color); paint.TextSize = font; using var face = SKTypeface.FromFamilyName("sans-serif"); paint.Typeface = face; canvas.DrawText(value, (float)x, (float)y, paint); }
         void DrawNode(Node n)
         {
+            cancellation.ThrowIfCancellationRequested();
             paint.Style = SKPaintStyle.Fill; paint.Color = SKColor.Parse(n.IsContainer ? "#172130" : "#202d40"); var rect = new SKRect((float)n.X, (float)n.Y, (float)(n.X + n.Width), (float)(n.Y + n.DisplayHeight));
             bool image=n.UseDeviceImage&&!n.CanContainNodes;
             void Frame(){if(!n.CanContainNodes&&n.Shape==DeviceShape.Circle)canvas.DrawOval(rect,paint);else canvas.DrawRoundRect(rect,n.Shape==DeviceShape.Rectangle?0:10,n.Shape==DeviceShape.Rectangle?0:10,paint);}
@@ -33,14 +35,14 @@ public static class PngExporter
             paint.TextAlign=SKTextAlign.Left;
             canvas.Restore();
         }
-        var captions=ConnectionCaptions.Create(p,p.Connections.Where(c=>showConnectionLabels||ConnectionRouter.ShowLabel(p)));
+        var captions=ConnectionCaptions.Create(p,p.Connections.Where(c=>showConnectionLabels||ConnectionRouter.ShowLabel(p)),routing,cancellation);
         var connections=p.Connections.ToLookup(c=>MapEditing.ConnectionLayer(p,c));
         foreach(var layer in MapEditing.PaintOrder(p).GroupBy(n=>MapEditing.Layer(p,n)))
         {
             foreach(var n in layer.Where(n=>n.CanContainNodes))DrawNode(n);
             foreach(var c in connections[layer.Key])
             {
-                var r=MapLayout.Route(p,c);paint.Style=SKPaintStyle.Stroke;
+                var r=routing.Route(c.Id);paint.Style=SKPaintStyle.Stroke;
                 foreach(var stroke in new[]{("#101722",5.6f),("#7397c1",1.6f)})
                 {
                     paint.Color=SKColor.Parse(stroke.Item1);paint.StrokeWidth=stroke.Item2;

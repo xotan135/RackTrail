@@ -14,6 +14,7 @@ public static class BrandUiChecks
     public static void Run(string directory)
     {
         Directory.CreateDirectory(directory);
+        PerformanceUiChecks.Run();
         EditingUiChecks.Run(directory);
         PresentationUiChecks.Run(directory);
         RoutingUiChecks.Run(directory);

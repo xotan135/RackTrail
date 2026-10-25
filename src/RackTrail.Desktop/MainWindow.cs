@@ -13,11 +13,22 @@ public sealed class MainWindow : Window
     private readonly EditorViewModel vm = new();
     private readonly MapCanvas canvas;
     private readonly IPlatformServices platform;
-    private readonly IconLibrary iconLibrary=new();
+    private readonly IconLibrary iconLibrary=new(load:false);
+    private bool checkingIcons;
+    private Task? reloadIconsTask;
     private readonly DispatcherTimer iconRefresh=new(){Interval=TimeSpan.FromSeconds(3)};
     private string iconFingerprint="";
     private readonly StackPanel properties = new() { Spacing = 9, Margin = new Thickness(18) };
-    private readonly StackPanel inventory = new() { Spacing = 3 };
+    private sealed record InventoryRow(Node Node,string Label,NodeKind Kind);
+    private readonly ListBox inventory=new(){Height=320,HorizontalAlignment=HorizontalAlignment.Stretch};
+    private long inventoryRevision=-1,iconRevision=-1;
+    private Project? inventoryProject;
+    private string inventoryQuery="";
+    private NodeKind? inventoryType;
+    private ClassificationConfidence? inventoryConfidence;
+    private bool updatingInventory;
+    private InventoryRow[] inventoryRows=[];
+    private readonly CancellationTokenSource lifetime=new();
     private readonly TextBlock status = new() { Margin = new Thickness(18, 8) };
     private readonly TextBlock summary = new() { FontSize = 11, Classes={"muted"}, Margin = new Thickness(0, 4, 0, 10) };
     private readonly TextBox search = new() { Name="MapSearch", Watermark = "Search names, IPs, VLANs…" };
@@ -26,10 +37,22 @@ public sealed class MainWindow : Window
     private readonly DispatcherTimer autosave = new() { Interval = TimeSpan.FromSeconds(30) };
     private string propertyKey = "";
     private readonly List<Action> propertyCommits = [];
-    private bool closingApproved, savingRecovery;
+    private bool closingApproved, savingRecovery, profiling, exporting;
+    internal void ConfigureProfiling(string mapPath,string outputDirectory)
+    {
+        profiling=true;vm.Replace(ProjectStorage.Deserialize(File.ReadAllText(mapPath)));
+        canvas.Performance=new PerformanceRecorder();Closed+=(_,_)=>{try{canvas.Performance!.Write(outputDirectory);}catch(Exception ex)when(ex is IOException or UnauthorizedAccessException){System.Diagnostics.Debug.WriteLine("Profiling output failed: "+ex.Message);}};
+    }
     public MainWindow()
     {
         CanResize=true; Title = "RackTrail"; Icon = Branding.CreateIcon();Width = 1500; Height = 940; MinWidth = 1080; MinHeight = 700; FontFamily = new FontFamily("Inter");
+        inventory.ItemsPanel=new Avalonia.Controls.Templates.FuncTemplate<Panel>(()=>new VirtualizingStackPanel());
+        inventory.ItemTemplate=new Avalonia.Controls.Templates.FuncDataTemplate<InventoryRow>((row,_)=>{
+            if(row==null)return new TextBlock();
+            var grid=new Grid{ColumnDefinitions=new("24,*"),Margin=new Thickness(2,4)};
+            grid.Children.Add(new DeviceLegendIcon(row.Node.Kind));var label=new TextBlock{Text=row.Label,TextWrapping=TextWrapping.Wrap,FontSize=11};Grid.SetColumn(label,1);grid.Children.Add(label);return grid;
+        });
+        inventory.SelectionChanged+=(_,_)=>{if(!updatingInventory&&inventory.SelectedItem is InventoryRow row)FocusItem(row.Node);};
         DataContext = vm; canvas = new(vm); platform = new DesktopPlatformServices(this);
         var root = new Grid { RowDefinitions = new("Auto,Auto,*,Auto") };
         var heading = new Grid { ColumnDefinitions = new("*,Auto"), Margin = new Thickness(22, 17) };
@@ -51,7 +74,7 @@ public sealed class MainWindow : Window
         left.Children.Add(palette);
         left.Children.Add(UserButton("+ Switch stack (5 members)",()=>AddItem(NodeKind.Switch,true)));
         left.Children.Add(UserButton("Open icons folder",()=>{try{platform.OpenFolder(iconLibrary.FolderPath);}catch(Exception ex){vm.Status=ex.Message;vm.Notify();}}));
-        left.Children.Add(UserButton("Reload icons",async()=>{ReloadIcons();await Message("Device icons",iconLibrary.Warnings.Count==0?$"Loaded {iconLibrary.Images.Count} user icons. Built-in logos are also available.":string.Join("\n",iconLibrary.Warnings));}));
+        left.Children.Add(UserButton("Reload icons",async()=>{await ReloadIcons();if(lifetime.IsCancellationRequested)return;await Message("Device icons",iconLibrary.Warnings.Count==0?$"Loaded {iconLibrary.Images.Count} user icons. Built-in logos are also available.":string.Join("\n",iconLibrary.Warnings));}));
         left.Children.Add(UserButton("Discover network",OpenDiscovery));
         left.Children.Add(Label("CONTAINERS")); var kinds = new ComboBox { ItemsSource = Enum.GetValues<NodeKind>().Where(k => new Node{Kind=k}.IsContainer).ToList(), SelectedIndex = 3, HorizontalAlignment = HorizontalAlignment.Stretch }; left.Children.Add(kinds); left.Children.Add(UserButton("+ Add container", () => AddItem((NodeKind)kinds.SelectedItem!)));
         left.Children.Add(new Separator { Margin = new Thickness(0, 9) }); left.Children.Add(Label("NETWORK EXPLORER")); left.Children.Add(search);
@@ -68,15 +91,34 @@ public sealed class MainWindow : Window
         var center = new Grid { RowDefinitions = new("Auto,*") }; var canvasHead = new Grid { ColumnDefinitions = new("*,Auto"), Margin = new Thickness(16, 12) }; var projectName = new TextBlock { FontWeight = FontWeight.SemiBold }; vm.Changed += () => projectName.Text = vm.Project.Name; projectName.Text = vm.Project.Name; canvasHead.Children.Add(projectName); var hint = new TextBlock { Text = "SCROLL  zoom    /    MIDDLE DRAG  pan", FontSize = 10, Classes={"muted"} }; Grid.SetColumn(hint, 1); canvasHead.Children.Add(hint); center.Children.Add(canvasHead); Grid.SetRow(canvas, 1); center.Children.Add(canvas); Grid.SetColumn(center, 2); workspace.Children.Add(center);
         var right = new Border { Classes={"panel"}, Child = new ScrollViewer { Content = properties }, BorderThickness = new Thickness(1, 1, 0, 0) }; Grid.SetColumn(right, 4); workspace.Children.Add(right); Grid.SetRow(workspace, 2); root.Children.Add(workspace);
         var footer = new Border { Classes={"panel"}, Child = status, BorderThickness = new Thickness(0, 1, 0, 0) }; Grid.SetRow(footer, 3); root.Children.Add(footer); Content = root;
-        vm.Changed += ()=>iconLibrary.ApplyTo(vm.Project);vm.Changed += Refresh;iconLibrary.ApplyTo(vm.Project);Refresh(); KeyDown += Shortcut;
-        iconRefresh.Tick+=(_,_)=>{try{var fingerprint=Directory.Exists(iconLibrary.FolderPath)?string.Join(";",Directory.EnumerateFiles(iconLibrary.FolderPath).Order(StringComparer.Ordinal).Select(p=>p+File.GetLastWriteTimeUtc(p).Ticks+new FileInfo(p).Length)):"";if(fingerprint!=iconFingerprint){iconFingerprint=fingerprint;ReloadIcons();}}catch(IOException){ }catch(UnauthorizedAccessException){ }};iconRefresh.Start();Closed+=(_,_)=>iconRefresh.Stop();
-        autosave.Tick += async (_, _) => { if (!vm.Dirty || savingRecovery) return; savingRecovery = true; try { await ProjectStorage.SaveAsync(ProjectStorage.Clone(vm.Project), platform.RecoveryPath); } catch (Exception ex) { vm.Status = "Autosave failed: " + ex.Message; Refresh(); } finally { savingRecovery = false; } }; autosave.Start();
+        vm.Changed += ()=>{if(iconRevision!=vm.DocumentRevision){iconRevision=vm.DocumentRevision;iconLibrary.ApplyTo(vm.Project);}};vm.Changed += Refresh;iconLibrary.ApplyTo(vm.Project);Refresh(); KeyDown += Shortcut;
+        iconRefresh.Tick+=async(_,_)=>{
+            if(checkingIcons||lifetime.IsCancellationRequested)return;checkingIcons=true;
+            try
+            {
+                var folder=iconLibrary.FolderPath;
+                var fingerprint=await Task.Run(()=>Directory.Exists(folder)?string.Join(";",Directory.EnumerateFiles(folder).Order(StringComparer.Ordinal).Select(p=>{lifetime.Token.ThrowIfCancellationRequested();return p+File.GetLastWriteTimeUtc(p).Ticks+new FileInfo(p).Length;})):"");
+                if(fingerprint!=iconFingerprint){iconFingerprint=fingerprint;await ReloadIcons();}
+            }
+            catch(OperationCanceledException){}catch(IOException){}catch(UnauthorizedAccessException){}
+            finally{checkingIcons=false;}
+        };iconRefresh.Start();
+        Closed+=(_,_)=>{iconRefresh.Stop();autosave.Stop();lifetime.Cancel();canvas.Dispose();DeviceIconRenderer.ClearCaches();};
+        autosave.Tick += async (_, _) => {
+            if(!vm.Dirty||savingRecovery||canvas.HasActiveGesture)return;
+            savingRecovery=true;
+            try{var copy=ProjectSnapshot.Capture(vm.Project);var path=platform.RecoveryPath;await Task.Run(()=>ProjectStorage.SaveAsync(copy,path,lifetime.Token));}
+            catch(OperationCanceledException){}
+            catch(Exception ex){vm.Status="Autosave failed: "+ex.Message;Refresh();}
+            finally{savingRecovery=false;}
+        };autosave.Start();
         Opened += async (_, _) => {
-            canvas.Fit();
+            await ReloadIcons();if(lifetime.IsCancellationRequested)return;canvas.Fit();
             if(Application.Current?.ApplicationLifetime is not Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)return;
+            if(profiling)return;
             bool recovered=false;
             if(File.Exists(platform.RecoveryPath)&&await Confirm("Recovery available","Restore the last autosaved network?")){
-                try{vm.Replace(await ProjectStorage.LoadAsync(platform.RecoveryPath));vm.Touch();canvas.Fit();recovered=true;}catch(Exception ex){await Message("Recovery failed",ex.Message);}
+                try{vm.Replace(await Task.Run(()=>ProjectStorage.LoadAsync(platform.RecoveryPath)));vm.Touch();canvas.Fit();recovered=true;}catch(Exception ex){await Message("Recovery failed",ex.Message);}
             }
             if(!recovered&&StartupPreferences.Load().AskToLoadSample)await AskForSample();
         };
@@ -97,20 +139,37 @@ public sealed class MainWindow : Window
     private void Refresh() { status.Text = vm.Status + "  •  " + vm.Project.Nodes.Count + " nodes / " + vm.Project.Connections.Count + " links"; Title = (vm.Dirty ? "● " : "") + vm.Project.Name + " / RackTrail"; RefreshInventory(); var key = (vm.Selected?.Id ?? vm.SelectedConnection?.Id ?? "none") + ":" + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(vm.Project)+":"+string.Join(",",vm.Selection.Order())+":"+vm.Selected?.Kind+":"+vm.Selected?.StackMembers.Count+":"+vm.PropertiesRevision; if (key != propertyKey) { propertyKey = key; RefreshProperties(); } }
     private void RefreshInventory()
     {
-        inventory.Children.Clear(); var nodes=SearchNodes();
-        foreach (var n in nodes) { var b = UserButton((n.IsContainer ? "▣ " : "· ") + n.Name+(n.IsStack?$" ({n.StackMembers.Count})":""), () => { FocusItem(n); }); b.HorizontalAlignment = HorizontalAlignment.Stretch; b.HorizontalContentAlignment = HorizontalAlignment.Left; b.FontSize = 11;
-            if(!n.IsContainer){
-                var row=new Grid{ColumnDefinitions=new("24,*")};row.Children.Add(new DeviceLegendIcon(n.Kind));
-                var label=new TextBlock{Text=$"{n.Name} · {n.Classification?.Confidence??ClassificationConfidence.Low}",TextWrapping=TextWrapping.Wrap,FontSize=11};
-                Grid.SetColumn(label,1);row.Children.Add(label);b.Content=row;
-            }
-            inventory.Children.Add(b); }
-        summary.Text = $"{vm.Project.Nodes.Count(n => !n.IsContainer)} devices   ·   {vm.Project.Nodes.Count(n => n.Kind == NodeKind.Subnet)} subnets";
+        var query=search.Text??"";
+        if(ReferenceEquals(inventoryProject,vm.Project)&&inventoryRevision==vm.DocumentRevision&&inventoryQuery==query&&inventoryType==vm.TypeFilter&&inventoryConfidence==vm.ConfidenceFilter)return;
+        inventoryProject=vm.Project;inventoryRevision=vm.DocumentRevision;inventoryQuery=query;inventoryType=vm.TypeFilter;inventoryConfidence=vm.ConfidenceFilter;
+        updatingInventory=true;
+        try
+        {
+            var existing=inventoryRows.ToDictionary(r=>r.Node.Id);
+            var rows=SearchNodes().Select(n=>{var label=n.Name+(n.IsStack?$" ({n.StackMembers.Count})":"")+(n.IsContainer?"":$" | {n.Classification?.Confidence??ClassificationConfidence.Low}");return existing.TryGetValue(n.Id,out var row)&&ReferenceEquals(row.Node,n)&&row.Label==label&&row.Kind==n.Kind?row:new InventoryRow(n,label,n.Kind);}).ToArray();
+            if(!rows.SequenceEqual(inventoryRows)){inventoryRows=rows;inventory.ItemsSource=rows;}
+        }
+        finally{updatingInventory=false;}
+        summary.Text=$"{vm.Project.Nodes.Count(n=>!n.IsContainer)} devices | {vm.Project.Nodes.Count(n=>n.Kind==NodeKind.Subnet)} subnets";
     }
+
+    private long searchIndexRevision=-1;
+    private Dictionary<string,string> searchTexts=[];
     private IEnumerable<Node> SearchNodes()
     {
         var query=(search.Text??"").Trim();
-        return vm.Project.Nodes.Where(n=>vm.MatchesFilter(n)&&(n.Name+" "+n.Addresses+" "+n.Cidr+" "+n.Role+" VLAN "+n.VlanId+" "+string.Join(" ",vm.Project.Ancestors(n).Select(a=>a.Name))+" "+string.Join(" ",n.StackMembers.Select(m=>$"{m.Name} {m.Model} {m.SerialNumber}"))).Contains(query,StringComparison.OrdinalIgnoreCase));
+        if(query.Length==0)return vm.Project.Nodes.Where(vm.MatchesFilter);
+        if(searchIndexRevision!=vm.DocumentRevision)
+        {
+            var depths=ProjectLimits.ValidateHierarchy(vm.Project);var paths=new Dictionary<string,string>();var texts=new Dictionary<string,string>();
+            foreach(var n in vm.Project.Nodes.OrderBy(n=>depths[n.Id]))
+            {
+                string parent=n.ParentId is {} id?paths[id]:"";paths[n.Id]=parent+" "+n.Name;
+                texts[n.Id]=n.Name+" "+n.Addresses+" "+n.Cidr+" "+n.Role+" VLAN "+n.VlanId+" "+parent+" "+string.Join(" ",n.StackMembers.Select(m=>$"{m.Name} {m.Model} {m.SerialNumber}"));
+            }
+            searchTexts=texts;searchIndexRevision=vm.DocumentRevision;
+        }
+        return vm.Project.Nodes.Where(n=>vm.MatchesFilter(n)&&searchTexts.GetValueOrDefault(n.Id,"").Contains(query,StringComparison.OrdinalIgnoreCase));
     }
     private void AddItem(NodeKind kind,bool stack=false){typeFilter.SelectedIndex=0;confidenceFilter.SelectedIndex=0;canvas.AddInView(kind,stack);}
     private void FocusItem(Node n){typeFilter.SelectedIndex=0;confidenceFilter.SelectedIndex=0;canvas.FocusNode(n);}
@@ -240,7 +299,21 @@ public sealed class MainWindow : Window
         if(skip.IsChecked==true){try{new StartupPreferences{AskToLoadSample=false}.Save();}catch(Exception ex)when(ex is IOException or UnauthorizedAccessException){await Message("Startup preference", "Could not save your preference: "+ex.Message);}}
         if(load){vm.Replace(SampleNetwork.Create());canvas.Fit();}
     }
-    private void ReloadIcons(){iconLibrary.Reload();if(iconLibrary.ApplyTo(vm.Project))vm.Touch();propertyKey="";vm.Notify();}
+    private async Task ReloadIcons()
+    {
+        if(reloadIconsTask!=null){await reloadIconsTask;return;}
+        reloadIconsTask=ReloadIconsCore();try{await reloadIconsTask;}finally{reloadIconsTask=null;}
+    }
+    private async Task ReloadIconsCore()
+    {
+        try
+        {
+            var folder=iconLibrary.FolderPath;var loaded=await Task.Run(()=>new IconLibrary(folder,cancellation:lifetime.Token));
+            if(lifetime.IsCancellationRequested)return;
+            iconLibrary.Adopt(loaded);if(iconLibrary.ApplyTo(vm.Project))vm.Touch(false);propertyKey="";vm.Notify();
+        }
+        catch(OperationCanceledException){}
+    }
     private void ImageProperties(Node node)
     {
         var label=new TextBlock{Text=$"Image size: {node.ImageSize:0} px",FontSize=11};properties.Children.Add(label);
@@ -294,9 +367,43 @@ public sealed class MainWindow : Window
         }
     }
     private async Task OpenDiscovery(){foreach(var commit in propertyCommits.ToArray())commit();await new ScanWindow(vm).ShowDialog(this);canvas.Fit();}
-    private async Task Open() { if (!await CanDiscard()) return; var path = await platform.OpenProject(); if (path == null) return; try { vm.Replace(await ProjectStorage.LoadAsync(path), path); canvas.Fit(); } catch (Exception ex) { await Message("Cannot open project", ex.Message); } }
-    private async Task Save(bool saveAs) { foreach(var commit in propertyCommits.ToArray())commit();var path = saveAs || vm.FilePath == null ? await platform.SavePath("Save network project", "json") : vm.FilePath; if (path == null) return; try { await ProjectStorage.SaveAsync(vm.Project, path); vm.FilePath = path; vm.Saved(); if (File.Exists(platform.RecoveryPath)) File.Delete(platform.RecoveryPath); vm.Status = "Saved " + Path.GetFileName(path); vm.Notify(); } catch (Exception ex) { await Message("Save failed", ex.Message); } }
-    private async Task ExportVisual(string extension) { var path = await platform.SavePath("Export " + extension.ToUpperInvariant(), extension); if (path == null) return; try { if (extension == "svg") await File.WriteAllTextAsync(path, VisualExporter.Svg(vm.Project,canvas.ShowAllConnectionLabels)); else if(extension=="html") await File.WriteAllTextAsync(path,HtmlExporter.Create(vm.Project,canvas.ShowAllConnectionLabels)); else PngExporter.Save(vm.Project, path,canvas.ShowAllConnectionLabels); vm.Status = "Exported " + Path.GetFileName(path); vm.Notify(); } catch (Exception ex) { await Message("Export failed", ex.Message); } }
+    private async Task Open() { if (!await CanDiscard()) return; var path = await platform.OpenProject(); if (path == null) return; try { vm.Replace(await Task.Run(()=>ProjectStorage.LoadAsync(path)), path); canvas.Fit(); } catch (Exception ex) { await Message("Cannot open project", ex.Message); } }
+    private async Task Save(bool saveAs)
+    {
+        foreach(var commit in propertyCommits.ToArray())commit();
+        var path=saveAs||vm.FilePath==null?await platform.SavePath("Save network project","json"):vm.FilePath;if(path==null)return;
+        var source=vm.Project;var revision=vm.DocumentRevision;var copy=ProjectSnapshot.Capture(source);
+        try
+        {
+            await Task.Run(()=>ProjectStorage.SaveAsync(copy,path,lifetime.Token));
+            if(!ReferenceEquals(source,vm.Project))return;
+            vm.FilePath=path;if(vm.DocumentRevision==revision)vm.Saved();
+            if(vm.DocumentRevision==revision&&File.Exists(platform.RecoveryPath))File.Delete(platform.RecoveryPath);
+            vm.Status="Saved "+Path.GetFileName(path)+(vm.DocumentRevision==revision?"":" (newer edits remain unsaved)");vm.Notify();
+        }
+        catch(OperationCanceledException){}
+        catch(Exception ex){await Message("Save failed",ex.Message);}
+    }
+    private async Task ExportVisual(string extension)
+    {
+        if(exporting){vm.Status="An export is already running.";vm.Notify();return;}
+        var path=await platform.SavePath("Export "+extension.ToUpperInvariant(),extension);if(path==null)return;
+        var copy=ProjectSnapshot.Capture(vm.Project);bool labels=canvas.ShowAllConnectionLabels;exporting=true;
+        try
+        {
+            await Task.Run(async()=>{
+                lifetime.Token.ThrowIfCancellationRequested();
+                if(extension=="svg")await File.WriteAllTextAsync(path,VisualExporter.Svg(copy,labels,lifetime.Token),lifetime.Token);
+                else if(extension=="html")await File.WriteAllTextAsync(path,HtmlExporter.Create(copy,labels,lifetime.Token),lifetime.Token);
+                else PngExporter.Save(copy,path,labels,lifetime.Token);
+            });
+            if(!lifetime.IsCancellationRequested){vm.Status="Exported "+Path.GetFileName(path);vm.Notify();}
+        }
+        catch(OperationCanceledException){}
+        catch(Exception ex){await Message("Export failed",ex.Message);}
+        finally{exporting=false;}
+    }
+
     private async Task ShowValidation() { var issues = NetworkValidator.Validate(vm.Project); await Message("Network validation", issues.Count == 0 ? "All addresses and subnets are valid." : string.Join("\n\n", issues.Select(i => (i.Excepted ? "[Allowed exception] " : "") + i.Message))); }
     private async Task<bool> CanDiscard() { foreach(var commit in propertyCommits.ToArray())commit();if (!vm.Dirty) return true; var result = await Choice("Unsaved changes", "Save your changes before continuing?", ["Save", "Discard", "Cancel"]); if (result == "Save") { await Save(false); return !vm.Dirty; } return result == "Discard"; }
     private async Task<bool> Confirm(string title, string text) => await Choice(title, text, ["Restore", "Skip"]) == "Restore";

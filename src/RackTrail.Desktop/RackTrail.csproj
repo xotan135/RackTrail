@@ -6,7 +6,7 @@
     <Product>RackTrail</Product>
     <Title>RackTrail</Title>
     <Description>RackTrail network map studio</Description>
-    <Version>1.11.1</Version>
+    <Version>1.12.0</Version>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets/RackTrail.ico</ApplicationIcon>

@@ -8,14 +8,17 @@ public sealed class IconLibrary
     public IReadOnlyDictionary<string,byte[]> Images => images;
     public IReadOnlyList<string> Warnings { get; private set; } = [];
     private Dictionary<string,byte[]> images = new(StringComparer.OrdinalIgnoreCase);
-    public IconLibrary(string? folderPath=null) { FolderPath=folderPath??Path.Combine(AppContext.BaseDirectory,"icons");Reload(); }
-    public void Reload()
+    private Dictionary<string,string> encodedImages=new(StringComparer.OrdinalIgnoreCase);
+    public IconLibrary(string? folderPath=null,bool load=true,CancellationToken cancellation=default) { FolderPath=folderPath??Path.Combine(AppContext.BaseDirectory,"icons");if(load)Reload(cancellation); }
+    internal void Adopt(IconLibrary loaded){images=loaded.images;encodedImages=loaded.encodedImages;Warnings=loaded.Warnings;}
+    public void Reload(CancellationToken cancellation=default)
     {
         var next=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);var warnings=new List<string>();
         try
         {
             if(Directory.Exists(FolderPath))foreach(var file in Directory.EnumerateFiles(FolderPath).Order(StringComparer.Ordinal))
             {
+                cancellation.ThrowIfCancellationRequested();
                 if(!new[]{".png",".jpg",".jpeg"}.Contains(Path.GetExtension(file),StringComparer.OrdinalIgnoreCase))continue;
                 try
                 {
@@ -33,7 +36,7 @@ public sealed class IconLibrary
             }
         }
         catch(Exception ex)when(ex is IOException or UnauthorizedAccessException){warnings.Add(ex.Message);}
-        images=next;Warnings=warnings;
+        images=next;encodedImages=next.ToDictionary(pair=>pair.Key,pair=>Convert.ToBase64String(pair.Value),StringComparer.OrdinalIgnoreCase);Warnings=warnings;
     }
     public bool ApplyTo(Project project)
     {
@@ -41,8 +44,8 @@ public sealed class IconLibrary
         foreach(var node in project.Nodes.Where(n=>!n.IsContainer))
         {
             var key=DeviceIcons.ResolveKey(node,DeviceIcons.BuiltInKeys.Concat(images.Keys));
-            if(!images.TryGetValue(key,out var png))continue;
-            var encoded=Convert.ToBase64String(png);if(node.EmbeddedIconKey==key&&node.IconPngBase64==encoded)continue;
+            if(!encodedImages.TryGetValue(key,out var encoded))continue;
+            if(node.EmbeddedIconKey==key&&node.IconPngBase64==encoded)continue;
             node.EmbeddedIconKey=key;node.IconPngBase64=encoded;changed=true;
         }
         return changed;

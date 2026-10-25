@@ -12,10 +12,14 @@ public sealed class EditorViewModel : INotifyPropertyChanged
     public Connection? SelectedConnection { get; set; }
     public string? FilePath { get; set; }
     public int PropertiesRevision {get;private set;}
+    public long GeometryRevision {get;private set;}
+    public long DocumentRevision {get;private set;}
+    public long AppearanceRevision {get;private set;}
+    private void ModelChanged(bool geometry=true){DocumentRevision++;AppearanceRevision++;if(geometry){GeometryRevision++;ConnectionRouter.Invalidate(Project);}}
     public bool Dirty { get; private set; }
     public bool ConnectMode { get; set; }
     public string? ConnectFrom { get; set; }
-    private readonly Stack<string> undo = new(), redo = new();
+    private readonly HistoryBuffer undo = new(), redo = new();
     private Project copied = new();
     public string Status { get; set; } = "Ready · Drag devices to move · Scroll to zoom · Middle-drag to pan";
     public NodeKind? TypeFilter { get; set; }
@@ -32,22 +36,22 @@ public sealed class EditorViewModel : INotifyPropertyChanged
         catch
         {
             Project=ProjectStorage.Deserialize(before);Selection.Clear();foreach(var id in selection)Selection.Add(id);
-            SelectedConnection=Project.Connections.Find(c=>c.Id==connectionId);Dirty=wasDirty;RefreshDetails();throw;
+            SelectedConnection=Project.Connections.Find(c=>c.Id==connectionId);Dirty=wasDirty;GeometryRevision++;RefreshDetails();throw;
         }
-        undo.Push(before);redo.Clear();Dirty=true;Notify();
+        undo.Push(before);redo.Clear();Dirty=true;ModelChanged();Notify();
     }
     public void RunUserAction(Action action) { try { action(); } catch(InvalidDataException ex) { Status=ex.Message;Notify(); } }
     public void RefreshDetails(){PropertiesRevision++;Notify();}
-    public void Touch() { Dirty = true; Notify(); }
+    public void Touch(bool geometry=true) { Dirty = true; ModelChanged(geometry); Notify(); }
     public void RerouteConnections()
     {
-        ConnectionRouter.Invalidate(Project);
+        GeometryRevision++;ConnectionRouter.Invalidate(Project);
         Status="Connections rerouted · device positions and custom routes preserved";
         Notify();
     }
-    public void Replace(Project p, string? path = null) { var before=ProjectStorage.Serialize(p);Containment.Repair(p);Project = p; FilePath = path; Selection.Clear(); SelectedConnection = null; ConnectMode = false; ConnectFrom = null; undo.Clear(); redo.Clear(); Dirty = before!=ProjectStorage.Serialize(p); Notify(); }
-    public void Undo() { if (undo.Count == 0) return; redo.Push(ProjectStorage.Serialize(Project)); Project = ProjectStorage.Deserialize(undo.Pop()); Dirty = true; Notify(); }
-    public void Redo() { if (redo.Count == 0) return; undo.Push(ProjectStorage.Serialize(Project)); Project = ProjectStorage.Deserialize(redo.Pop()); Dirty = true; Notify(); }
+    public void Replace(Project p, string? path = null) { var before=p.Nodes.Select(n=>(n.X,n.Y,n.Width,n.Height)).ToArray();Containment.Repair(p);Project = p; FilePath = path; Selection.Clear(); SelectedConnection = null; ConnectMode = false; ConnectFrom = null; undo.Clear(); redo.Clear(); Dirty = !before.SequenceEqual(p.Nodes.Select(n=>(n.X,n.Y,n.Width,n.Height))); ModelChanged();Notify(); }
+    public void Undo() { if (undo.Count == 0) return; redo.Push(ProjectStorage.Serialize(Project)); Project = ProjectStorage.Deserialize(undo.Pop()); Dirty = true;ModelChanged(); Notify(); }
+    public void Redo() { if (redo.Count == 0) return; undo.Push(ProjectStorage.Serialize(Project)); Project = ProjectStorage.Deserialize(redo.Pop()); Dirty = true;ModelChanged(); Notify(); }
     public Node Add(NodeKind kind, double x = 100, double y = 100) { var n = new Node { Kind = kind, Name = kind.ToString() + " " + (Project.Nodes.Count + 1), X = x, Y = y }; if (n.CanContainNodes) { n.Width = 460; n.Height = 240; }if(kind==NodeKind.Hypervisor){n.HypervisorPlatform="Hyper-V";n.OperatingSystem="Windows Server";} n.ZOrder=MapEditing.Front(Project); Edit(() => Project.Nodes.Add(n)); Selection.Clear(); Selection.Add(n.Id); Notify(); return n; }
     private void Host(Node vm,string? hostId,bool moveInside)
     {

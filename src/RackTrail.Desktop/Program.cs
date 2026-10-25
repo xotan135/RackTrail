@@ -5,9 +5,12 @@ namespace RackTrail.Desktop;
 
 internal static class Program
 {
+    internal static string? ProfileMap,ProfileDirectory;
     [STAThread]
     public static void Main(string[] args)
     {
+        if(args.Length==2&&args[0]=="--performance-check"){BuildAvaloniaApp().SetupWithoutStarting();PerformanceBenchmarks.Run(args[1]);return;}
+        if(args.Length==3&&args[0]=="--profile-map"){ProfileMap=args[1];ProfileDirectory=args[2];args=[];}
         if (args.Length == 2 && args[0] == "--write-brand") { BrandArtwork.Export(args[1]); return; }
         if(args.Length==2&&args[0]=="--write-icons"){IconLibrary.WriteBuiltIns(args[1]);return;}
         if(args.Length==3&&args[0]=="--check-map")
@@ -31,5 +34,5 @@ internal static class Program
 public class App : Application
 {
     public override void Initialize() { Styles.Add(new FluentTheme()); Styles.Add(new Avalonia.Markup.Xaml.Styling.StyleInclude(new Uri("avares://RackTrail/")){Source=new Uri("avares://RackTrail/Assets/Modern.axaml")}); RequestedThemeVariant = Avalonia.Styling.ThemeVariant.Dark; }
-    public override void OnFrameworkInitializationCompleted() { if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) desktop.MainWindow = new MainWindow(); base.OnFrameworkInitializationCompleted(); }
+    public override void OnFrameworkInitializationCompleted() { if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) {var window=new MainWindow();if(Program.ProfileMap!=null)window.ConfigureProfiling(Program.ProfileMap,Program.ProfileDirectory!);desktop.MainWindow=window;} base.OnFrameworkInitializationCompleted(); }
 }

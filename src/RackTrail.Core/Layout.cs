@@ -15,10 +15,10 @@ public static class MapLayout
     }
     public static List<MapPoint> Route(Project p, Connection c)
         => ConnectionRouter.Route(p,c);
-    public static List<MapPoint> PreviewRoute(Project p,Connection c) => LegacyRoute(p,c);
-    internal static List<MapPoint> LegacyRoute(Project p, Connection c)
+    public static List<MapPoint> PreviewRoute(Project p,Connection c,SceneIndex? index=null) => LegacyRoute(p,c,index);
+    internal static List<MapPoint> LegacyRoute(Project p, Connection c,SceneIndex? index=null)
     {
-        var a = p.VisibleEndpoint(c.From); var b = p.VisibleEndpoint(c.To);
+        var a = index==null?p.VisibleEndpoint(c.From):index.Endpoints.GetValueOrDefault(c.From); var b = index==null?p.VisibleEndpoint(c.To):index.Endpoints.GetValueOrDefault(c.To);
         if (a == null || b == null || a.Id == b.Id) return [];
         if (c.Route.Count > 0 && a.Id == c.From && b.Id == c.To) return c.Route;
         if(c.Kind==ConnectionKind.Hosting&&b.ParentId==a.Id)return [new(a.X+10,a.Y+55),new(a.X+10,b.Y+b.DisplayHeight/2),new(b.X,b.Y+b.DisplayHeight/2)];

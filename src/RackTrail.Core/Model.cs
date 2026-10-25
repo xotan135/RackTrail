@@ -9,6 +9,7 @@ public enum ConnectionKind { Network, Hosting }
 public record MapPoint(double X, double Y);
 public class StackMember
 {
+    internal StackMember SnapshotCopy() => (StackMember)MemberwiseClone();
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public int Number { get; set; } = 1;
     public string Name { get; set; } = "";
@@ -64,10 +65,18 @@ public class Node
     [JsonIgnore] public bool IsContainer => Kind is NodeKind.Site or NodeKind.Building or NodeKind.Vlan or NodeKind.Subnet or NodeKind.SecurityZone;
     [JsonIgnore] public bool CanContainNodes => IsContainer || Kind == NodeKind.Hypervisor;
     [JsonIgnore] public IEnumerable<string> Ips => Addresses.Split(new[] { ',', ';', ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+    internal Node SnapshotCopy()
+    {
+        var copy=(Node)MemberwiseClone();
+        copy.StackMembers=StackMembers.Select(m=>m.SnapshotCopy()).ToList();
+        copy.Classification=Classification?.SnapshotCopy();
+        return copy;
+    }
     public override string ToString() => Name;
 }
 public class Connection
 {
+    internal Connection SnapshotCopy(){var copy=(Connection)MemberwiseClone();copy.Route=Route.ToList();return copy;}
     public ConnectionKind Kind { get; set; }
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string From { get; set; } = "";
@@ -131,11 +140,24 @@ public static class ProjectStorage
         return p;
     }
     public static Project Clone(Project p) => Deserialize(Serialize(p));
-    public static async Task SaveAsync(Project p, string path)
+    private static readonly SemaphoreSlim saveGate=new(1,1);
+    public static async Task SaveAsync(Project p,string path,CancellationToken cancellation=default)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        var temp = path + ".tmp";
-        await File.WriteAllTextAsync(temp, Serialize(p)); File.Move(temp, path, true);
+        await saveGate.WaitAsync(cancellation).ConfigureAwait(false);
+        string? temp=null;
+        try
+        {
+            cancellation.ThrowIfCancellationRequested();
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+            temp=path+".tmp";
+            await File.WriteAllTextAsync(temp,Serialize(p),cancellation).ConfigureAwait(false);
+            cancellation.ThrowIfCancellationRequested();File.Move(temp,path,true);temp=null;
+        }
+        finally
+        {
+            if(temp!=null){try{File.Delete(temp);}catch(IOException){}catch(UnauthorizedAccessException){}}
+            saveGate.Release();
+        }
     }
     public static async Task<Project> LoadAsync(string path) => Deserialize(await File.ReadAllTextAsync(path));
 }

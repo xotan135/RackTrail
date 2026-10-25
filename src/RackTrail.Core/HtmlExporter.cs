@@ -7,10 +7,10 @@ namespace RackTrail.Core;
 /// <summary>A portable browser viewer. All artwork and controls live in one offline file.</summary>
 public static class HtmlExporter
 {
-    public static string Create(Project project,bool showConnectionLabels=false)
+    public static string Create(Project project,bool showConnectionLabels=false,CancellationToken cancellation=default)
     {
         string E(string text)=>WebUtility.HtmlEncode(text);
-        var svg=VisualExporter.Svg(project,showConnectionLabels)
+        var svg=VisualExporter.Svg(project,showConnectionLabels,cancellation)
             .Replace("<svg xmlns=","<svg role=\"img\" aria-label=\"Network map\" xmlns=",StringComparison.Ordinal);
         var hash=Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(Script)));
         var html=new StringBuilder();

@@ -2,6 +2,10 @@
 
 [Back to the README](README.md)
 
+For step-by-step manual build practice and the new large-map profiling commands, see
+[Performance and manual build](docs/Performance-and-manual-build.md). The performance
+changes are source-only until you build and run the checks described there.
+
 ## Build and verify
 
 Before publishing, run `./scripts/Check-PublishContents.ps1`. It checks tracked

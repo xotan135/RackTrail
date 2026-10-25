@@ -5,7 +5,7 @@ namespace RackTrail.Core;
 /// <summary>Shared, deterministic orthogonal routing for the editor and both visual exports.</summary>
 public static class ConnectionRouter
 {
-    private sealed class Cache { public int Stamp; public bool Ready; public Dictionary<string,List<MapPoint>> Routes = []; }
+    private sealed class Cache { public int Stamp; public bool Ready; public RoutingSnapshot? Snapshot; }
     private static readonly ConditionalWeakTable<Project,Cache> Caches = new();
     private record Box(double Left,double Top,double Right,double Bottom);
     private record Port(MapPoint Edge,MapPoint Stub,int Axis);
@@ -28,24 +28,31 @@ public static class ConnectionRouter
         return route.Count<2?route[0]:new((route[best-1].X+route[best].X)/2,(route[best-1].Y+route[best].Y)/2);
     }
     private static double Distance(MapPoint a,MapPoint b)=>Math.Abs(a.X-b.X)+Math.Abs(a.Y-b.Y);
-    public static List<MapPoint> Route(Project p,Connection c)
+    // Compatibility for callers mutating POCOs directly. UI uses revision-owned snapshots instead.
+    public static List<MapPoint> Route(Project p,Connection c) => Snapshot(p).Route(c.Id).ToList();
+    public static RoutingSnapshot Snapshot(Project p,CancellationToken cancellation=default)
     {
-        var cache=Caches.GetOrCreateValue(p);var hash=new HashCode();
-        foreach(var n in p.Nodes){hash.Add(n.Id);hash.Add(n.Kind);hash.Add(n.ParentId);hash.Add(n.X);hash.Add(n.Y);hash.Add(n.Width);hash.Add(n.DisplayHeight);hash.Add(n.Collapsed);hash.Add(n.CanContainNodes);hash.Add(n.ShowStackMembers);foreach(var m in n.StackMembers){hash.Add(m.Id);hash.Add(m.Number);}}
-        foreach(var link in p.Connections){hash.Add(link.Id);hash.Add(link.From);hash.Add(link.To);hash.Add(link.Kind);hash.Add(link.FromStackMemberId);hash.Add(link.ToStackMemberId);foreach(var point in link.Route)hash.Add(point);}
-        int stamp=hash.ToHashCode();
-        lock(cache)
-        {
-            if(!cache.Ready||cache.Stamp!=stamp){cache.Routes=Build(p);cache.Stamp=stamp;cache.Ready=true;}
-            return cache.Routes.TryGetValue(c.Id,out var route)?route:MapLayout.LegacyRoute(p,c);
-        }
+        var cache=Caches.GetOrCreateValue(p);int stamp=Fingerprint(p);
+        lock(cache){if(!cache.Ready||cache.Stamp!=stamp){cache.Snapshot=Compute(p,cancellation);cache.Stamp=stamp;cache.Ready=true;}return cache.Snapshot!;}
     }
-    private static Dictionary<string,List<MapPoint>> Build(Project p)
+    private static int Fingerprint(Project p)
     {
+        var hash=new HashCode();
+        foreach(var n in p.Nodes){hash.Add(n.Id);hash.Add(n.Kind);hash.Add(n.ParentId);hash.Add(n.X);hash.Add(n.Y);hash.Add(n.Width);hash.Add(n.DisplayHeight);hash.Add(n.Collapsed);hash.Add(n.CanContainNodes);hash.Add(n.Name);hash.Add(n.Addresses);hash.Add(n.Model);hash.Add(n.ImageSize);hash.Add(n.UseDeviceImage);hash.Add(n.ShowDeviceInfo);hash.Add(n.ShowStackMembers);foreach(var m in n.StackMembers){hash.Add(m.Id);hash.Add(m.Number);}}
+        foreach(var link in p.Connections){hash.Add(link.Id);hash.Add(link.From);hash.Add(link.To);hash.Add(link.Kind);hash.Add(link.FromStackMemberId);hash.Add(link.ToStackMemberId);foreach(var point in link.Route)hash.Add(point);}
+        return hash.ToHashCode();
+
+    }
+    public static RoutingSnapshot Compute(Project ownedSnapshot,CancellationToken cancellation=default) => new(Build(ownedSnapshot,cancellation));
+    public static RoutingSnapshot Preview(Project p,SceneIndex? index=null) => new(p.Connections.ToDictionary(c=>c.Id,c=>MapLayout.LegacyRoute(p,c,index)));
+    private static Dictionary<string,List<MapPoint>> Build(Project p,CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
         var result=new Dictionary<string,List<MapPoint>>();var work=new List<Ends>();
-        var visible=p.Nodes.Where(p.Visible).ToList();
+        var scene=new SceneIndex(p);
+        var visible=scene.PaintOrder.ToList();
         var links=p.Connections.OrderBy(c=>c.Id,StringComparer.Ordinal).ToList();
-        var endpoints=links.Select(c=>(Link:c,A:p.VisibleEndpoint(c.From),B:p.VisibleEndpoint(c.To))).ToList();
+        var endpoints=links.Select(c=>(Link:c,A:scene.Endpoints.GetValueOrDefault(c.From),B:scene.Endpoints.GetValueOrDefault(c.To))).ToList();
         var incident=new Dictionary<string,List<string>>();
         foreach(var e in endpoints.Where(e=>e.A!=null&&e.B!=null&&e.A.Id!=e.B.Id))foreach(var n in new[]{e.A!,e.B!})
         {if(!incident.TryGetValue(n.Id,out var list))incident[n.Id]=list=[];list.Add(e.Link.Id);}
@@ -63,6 +70,7 @@ public static class ConnectionRouter
         }
         foreach(var e in endpoints)
         {
+            cancellation.ThrowIfCancellationRequested();
             var c=e.Link;var a=e.A;var b=e.B;
             if(a==null||b==null||a.Id==b.Id){result[c.Id]=[];continue;}
             if(c.Route.Count>0&&a.Id==c.From&&b.Id==c.To||c.Kind==ConnectionKind.Hosting&&b.ParentId==a.Id){result[c.Id]=MapLayout.LegacyRoute(p,c);continue;}
@@ -82,12 +90,13 @@ public static class ConnectionRouter
         // Bound routing work on exceptionally large projects; never allocate an unbounded grid.
         var regions=visible.Where(n=>n.CanContainNodes&&n.ParentId==null&&!n.Collapsed).ToList();
         bool local=(long)xs.Count*ys.Count>600_000;
-        var grid=local?null:new Grid(xs.ToArray(),ys.ToArray(),obstacles,regions);
+        var grid=local?null:new Grid(xs.ToArray(),ys.ToArray(),obstacles,regions,cancellation);
         var reserved=new List<List<MapPoint>>();
         // Short local links reserve lanes first, leaving long inter-site links to the gutters.
         foreach(var e in work.OrderBy(e=>Math.Abs(e.A.X-e.B.X)+Math.Abs(e.A.Y-e.B.Y)).ThenBy(e=>e.Link.Id,StringComparer.Ordinal))
         {
-            var allowed=p.Ancestors(e.A).Append(e.A).Concat(p.Ancestors(e.B).Append(e.B)).Select(n=>n.Id).ToHashSet();
+            cancellation.ThrowIfCancellationRequested();
+            var allowed=scene.Parents[e.A.Id].Append(e.A).Concat(scene.Parents[e.B.Id].Append(e.B)).Select(n=>n.Id).ToHashSet();
             var allowedRegions=regions.Select((n,i)=>(n,i)).Where(pair=>allowed.Contains(pair.n.Id)).Select(pair=>pair.i).ToHashSet();
             var route=grid?.Find(e,allowedRegions);
             if(route==null)
@@ -102,7 +111,7 @@ public static class ConnectionRouter
                     foreach(var box in nearby){lx.UnionWith([box.Left,box.Right]);ly.UnionWith([box.Top,box.Bottom]);}
                     foreach(var port in ports){lx.Add(port.Stub.X);ly.Add(port.Stub.Y);}
                     if((long)lx.Count*ly.Count>600_000)continue;
-                    var localGrid=new Grid(lx.ToArray(),ly.ToArray(),nearby,regions);
+                    var localGrid=new Grid(lx.ToArray(),ly.ToArray(),nearby,regions,cancellation);
                     foreach(var previous in reserved)localGrid.Reserve(previous);
                     route=localGrid.Find(e,allowedRegions);
                     if(route!=null&&visible.Where(n=>n.Id!=e.A.Id&&n.Id!=e.B.Id).Any(n=>ConnectionCaptions.Crosses(route,ProtectedBounds(n))))route=null;
@@ -116,19 +125,22 @@ public static class ConnectionRouter
     }
     private sealed class Grid
     {
+        private readonly CancellationToken cancellation;
         private readonly double[] xs,ys;
         private readonly int width,count;
         private readonly bool[] horizontal,vertical;
         private readonly int[] usedH,usedV;
         private readonly int[] nearbyH,nearbyV;
         private readonly int[] regionH,regionV;
-        public Grid(double[] x,double[] y,List<Box> obstacles,List<Node> regions)
+        public Grid(double[] x,double[] y,List<Box> obstacles,List<Node> regions,CancellationToken cancellation)
         {
+            this.cancellation=cancellation;
             xs=x;ys=y;width=x.Length;count=width*y.Length;horizontal=new bool[count];vertical=new bool[count];usedH=new int[count];usedV=new int[count];
             nearbyH=new int[count];nearbyV=new int[count];
             regionH=new int[count];regionV=new int[count];Array.Fill(regionH,-1);Array.Fill(regionV,-1);
             for(int i=0;i<regions.Count;i++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 var n=regions[i];int left=Math.Max(0,Lower(xs,n.X)-1),right=Math.Min(width-1,Lower(xs,n.X+n.Width)),top=Math.Max(0,Lower(ys,n.Y)-1),bottom=Math.Min(ys.Length-1,Lower(ys,n.Y+n.DisplayHeight));
                 for(int row=top;row<=bottom;row++)if(ys[row]>n.Y&&ys[row]<n.Y+n.DisplayHeight)
                     for(int col=left;col<right;col++)if(xs[col+1]>n.X&&xs[col]<n.X+n.Width)regionH[row*width+col]=i;
@@ -137,6 +149,7 @@ public static class ConnectionRouter
             }
             foreach(var b in obstacles)
             {
+                cancellation.ThrowIfCancellationRequested();
                 int left=Array.BinarySearch(xs,b.Left),right=Array.BinarySearch(xs,b.Right),top=Array.BinarySearch(ys,b.Top),bottom=Array.BinarySearch(ys,b.Bottom);
                 for(int row=top+1;row<bottom;row++)for(int col=left;col<right;col++)horizontal[row*width+col]=true;
                 for(int row=top;row<bottom;row++)for(int col=left+1;col<right;col++)vertical[row*width+col]=true;
@@ -180,6 +193,7 @@ public static class ConnectionRouter
             int finish=-1;double best=double.PositiveInfinity;int visited=0;
             while(queue.TryDequeue(out int state,out double priority))
             {
+                if((visited&255)==0)cancellation.ThrowIfCancellationRequested();
                 if(priority>=best)break;
                 int index=state/2,axis=state%2;
                 if(priority>costs[state]+Estimate(index)+.001)continue;

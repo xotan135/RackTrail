@@ -1,5 +1,12 @@
 # Version history
 
+## 1.12.0 — 2026-10-25
+
+- Prepare large-map performance improvements: revision-owned background routing, viewport culling, spatial hit testing and coalesced pointer gestures.
+- Reuse route, caption, image and text resources; virtualize the inventory and bound history/cache memory.
+- Move icon loading, autosave and exports to detached background work with cancellation.
+- Add opt-in synthetic-map benchmarks and live interaction profiling; manual build and runtime verification are pending.
+
 ## 1.11.1 — 2026-10-23
 
 - Keep obstacle avoidance on irregular large maps by routing connections on smaller local grids when the global grid exceeds its budget.

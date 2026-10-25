@@ -5,20 +5,23 @@ namespace RackTrail.Core;
 
 public static class VisualExporter
 {
-    public static (double X,double Y,double Width,double Height) Bounds(Project p)
+    public static (double X,double Y,double Width,double Height) Bounds(Project p,RoutingSnapshot? snapshot=null)
     {
-        var nodes=p.Nodes.Where(p.Visible).ToList();var points=p.Connections.SelectMany(c=>MapLayout.Route(p,c)).ToList();
+        snapshot ??= ConnectionRouter.Snapshot(p);
+        var nodes=p.Nodes.Where(p.Visible).ToList();var points=snapshot.Routes.Values.SelectMany(r=>r).ToList();
         double x=Math.Min(0,nodes.Select(n=>n.X-40).Concat(points.Select(a=>a.X-40)).DefaultIfEmpty(0).Min()),y=Math.Min(0,nodes.Select(n=>n.Y-40).Concat(points.Select(a=>a.Y-40)).DefaultIfEmpty(0).Min());
         return(x,y,Math.Max(800,nodes.Select(n=>n.X+n.Width+40).Concat(points.Select(a=>a.X+40)).DefaultIfEmpty(800).Max()-x),Math.Max(600,nodes.Select(n=>n.Y+n.DisplayHeight+40).Concat(points.Select(a=>a.Y+40)).DefaultIfEmpty(600).Max()-y));
     }
     public static (double Width,double Height) Size(Project p){var b=Bounds(p);return(b.Width,b.Height);}
     public static string Color(Node n) => MapEditing.ValidColor(n.AccentColor) ? n.AccentColor : n.IsContainer ? "#93a4bc" : n.Kind switch { NodeKind.Firewall => "#f29b72", NodeKind.Internet => "#b9a0ef", NodeKind.Server => "#69c7bf", _ => "#7caaf0" };
-    public static string Svg(Project p,bool showConnectionLabels=false)
+    public static string Svg(Project p,bool showConnectionLabels=false,CancellationToken cancellation=default)
     {
         static string F(double n) => n.ToString("0.##", CultureInfo.InvariantCulture); static string E(string s) => SecurityElement.Escape(s) ?? "";
-        var size = Bounds(p); var s = new StringBuilder($"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{F(size.Width)}\" height=\"{F(size.Height)}\" viewBox=\"{F(size.X)} {F(size.Y)} {F(size.Width)} {F(size.Height)}\"><rect x=\"{F(size.X)}\" y=\"{F(size.Y)}\" width=\"{F(size.Width)}\" height=\"{F(size.Height)}\" fill=\"#101722\"/>");
+        var routing=ConnectionRouter.Snapshot(p,cancellation);
+        var size = Bounds(p,routing); var s = new StringBuilder($"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{F(size.Width)}\" height=\"{F(size.Height)}\" viewBox=\"{F(size.X)} {F(size.Y)} {F(size.Width)} {F(size.Height)}\"><rect x=\"{F(size.X)}\" y=\"{F(size.Y)}\" width=\"{F(size.Width)}\" height=\"{F(size.Height)}\" fill=\"#101722\"/>");
         void Node(Node n)
         {
+            cancellation.ThrowIfCancellationRequested();
             if(!n.UseDeviceImage||n.CanContainNodes){
                 if(!n.CanContainNodes&&n.Shape==DeviceShape.Circle)s.Append($"<ellipse cx=\"{F(n.X+n.Width/2)}\" cy=\"{F(n.Y+n.DisplayHeight/2)}\" rx=\"{F(n.Width/2)}\" ry=\"{F(n.DisplayHeight/2)}\" fill=\"#202d40\" stroke=\"{Color(n)}\"/>");
                 else s.Append($"<rect x=\"{F(n.X)}\" y=\"{F(n.Y)}\" width=\"{F(n.Width)}\" height=\"{F(n.DisplayHeight)}\" rx=\"{(n.Shape==DeviceShape.Rectangle?0:10)}\" fill=\"{(n.CanContainNodes ? "#172130" : "#202d40")}\" stroke=\"{Color(n)}\"/>");
@@ -36,14 +39,14 @@ public static class VisualExporter
             }
 
         }
-        var captions=ConnectionCaptions.Create(p,p.Connections.Where(c=>showConnectionLabels||ConnectionRouter.ShowLabel(p)));
+        var captions=ConnectionCaptions.Create(p,p.Connections.Where(c=>showConnectionLabels||ConnectionRouter.ShowLabel(p)),routing,cancellation);
         var connections=p.Connections.ToLookup(c=>MapEditing.ConnectionLayer(p,c));
         foreach(var layer in MapEditing.PaintOrder(p).GroupBy(n=>MapEditing.Layer(p,n)))
         {
             foreach(var n in layer.Where(n=>n.CanContainNodes))Node(n);
             foreach(var c in connections[layer.Key])
             {
-                var r=MapLayout.Route(p,c);if(r.Count<2)continue;
+                var r=routing.Route(c.Id);if(r.Count<2)continue;
                 var points=string.Join(" ",r.Select(x=>$"{F(x.X)},{F(x.Y)}"));
                 s.Append($"<polyline points=\"{points}\" fill=\"none\" stroke=\"#101722\" stroke-width=\"5.6\"/><polyline points=\"{points}\" fill=\"none\" stroke=\"#7397c1\" stroke-width=\"1.6\"/>");
                 if(captions.TryGetValue(c.Id,out var caption))

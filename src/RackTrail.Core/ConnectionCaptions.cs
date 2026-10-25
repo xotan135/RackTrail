@@ -16,15 +16,17 @@ public static class ConnectionCaptions
         }
         return false;
     }
-    public static Dictionary<string,ConnectionCaption> Create(Project p,IEnumerable<Connection> candidates)
+    public static Dictionary<string,ConnectionCaption> Create(Project p,IEnumerable<Connection> candidates,RoutingSnapshot? snapshot=null,CancellationToken cancellation=default,IEnumerable<VisualBox>? occupied=null)
     {
         var result=new Dictionary<string,ConnectionCaption>();var wanted=candidates.Where(c=>c.Kind!=ConnectionKind.Hosting&&c.LabelFor(p).Length>0).ToList();
         if(wanted.Count==0)return result;
-        var obstacles=p.Nodes.Where(p.Visible).Select(ConnectionRouter.ProtectedBounds).ToList();
-        var routes=p.Connections.ToDictionary(c=>c.Id,c=>MapLayout.Route(p,c));
-        var bounds=VisualExporter.Bounds(p);
+        var obstacles=p.Nodes.Where(p.Visible).Select(ConnectionRouter.ProtectedBounds).Concat(occupied??Enumerable.Empty<VisualBox>()).ToList();
+        snapshot ??= ConnectionRouter.Snapshot(p);
+        var routes=snapshot.Routes;
+        var bounds=VisualExporter.Bounds(p,snapshot);
         foreach(var c in wanted)
         {
+            cancellation.ThrowIfCancellationRequested();
             var route=routes[c.Id];string text=string.Join(" ",c.LabelFor(p).Split((char[]?)null,StringSplitOptions.RemoveEmptyEntries));
             if(text.Length>40)text=text[..39]+"…";
             double width=Math.Max(60,text.Length*6+12),height=20;
