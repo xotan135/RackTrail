@@ -45,7 +45,7 @@ public class MapCanvas : Control, IDisposable
     private readonly RouteWorker worker;
     private SceneIndex? scene;
     private Project? indexedProject;
-    private long indexedRevision=-1, requestedRevision=-1;
+    private long indexedRevision=-1, requestedRevision=-1, observedSceneRevision=-1;
     private RoutingSnapshot? routes;
     private readonly Dictionary<string,ConnectionCaption> captions=[];
     private string? captionRequestKey;
@@ -67,9 +67,10 @@ public class MapCanvas : Control, IDisposable
     private void EnsureScene()
     {
         if(disposed)return;
-        if(scene==null||!ReferenceEquals(indexedProject,Vm.Project)||indexedRevision!=Vm.GeometryRevision||scene.Nodes.Count!=Vm.Project.Nodes.Count||connectionsById.Count!=Vm.Project.Connections.Count)
+        long modelRevision=HasActiveGesture?observedSceneRevision:SceneChanges.Revision(Vm.Project);
+        if(scene==null||!ReferenceEquals(indexedProject,Vm.Project)||indexedRevision!=Vm.GeometryRevision||observedSceneRevision!=modelRevision||scene.Nodes.Count!=Vm.Project.Nodes.Count||connectionsById.Count!=Vm.Project.Connections.Count)
         {
-            worker.Cancel();indexedProject=Vm.Project;indexedRevision=Vm.GeometryRevision;
+            worker.Cancel();indexedProject=Vm.Project;indexedRevision=Vm.GeometryRevision;observedSceneRevision=SceneChanges.Refresh(Vm.Project);
             presentations.Clear();scene=new SceneIndex(Vm.Project);routesComplete=false;gesturePreview=null;gestureLinks.Clear();routes=ConnectionRouter.Preview(Vm.Project,scene);captions.Clear();captionRequestKey=null;
             connectionsById=Vm.Project.Connections.ToDictionary(c=>c.Id);
             connectionRanks=Vm.Project.Connections.Select((c,i)=>(c.Id,Rank:i)).ToDictionary(x=>x.Id,x=>x.Rank);
@@ -89,7 +90,7 @@ public class MapCanvas : Control, IDisposable
     public MapCanvas(EditorViewModel vm)
     {
         Vm=vm;Focusable=true;ClipToBounds=true;
-        worker=new RouteWorker(result=>{if(disposed||!ReferenceEquals(indexedProject,Vm.Project)||result.Revision!=Vm.GeometryRevision||dragging||resizing!=null)return;Performance?.RecordValue(result.CaptionsOnly?"captions-background":"routing-and-captions-background",result.RoutingMilliseconds,result.AllocatedBytes);if(!result.CaptionsOnly){routes=result.Routes;routesComplete=true;captions.Clear();captionRequestKey=null;}foreach(var entry in result.Captions)captions[entry.Key]=entry.Value;InvalidateVisual();},message=>{Vm.Status="Routing preview retained: "+message;Vm.Notify();});
+        worker=new RouteWorker(result=>{if(disposed||!ReferenceEquals(indexedProject,Vm.Project)||result.Revision!=Vm.GeometryRevision||observedSceneRevision!=SceneChanges.Revision(Vm.Project)||dragging||resizing!=null)return;Performance?.RecordValue(result.CaptionsOnly?"captions-background":"routing-and-captions-background",result.RoutingMilliseconds,result.AllocatedBytes);if(!result.CaptionsOnly){routes=result.Routes;routesComplete=true;captions.Clear();captionRequestKey=null;}foreach(var entry in result.Captions)captions[entry.Key]=entry.Value;InvalidateVisual();},message=>{Vm.Status="Routing preview retained: "+message;Vm.Notify();});
         vm.Changed+=OnModelChanged;
         pointerTimer.Tick+=(_,_)=>FlushPointer();
     }
@@ -103,7 +104,7 @@ public class MapCanvas : Control, IDisposable
         if(disposed)return;
         if(HasActiveGesture&&(!ReferenceEquals(indexedProject,Vm.Project)||indexedRevision!=Vm.GeometryRevision))
         {dragging=false;resizing=null;moveSession=null;pendingPointer=false;pointerTimer.Stop();Cursor=ArrowCursor;}
-        bool geometry=scene==null||!ReferenceEquals(indexedProject,Vm.Project)||indexedRevision!=Vm.GeometryRevision||scene.Nodes.Count!=Vm.Project.Nodes.Count||connectionsById.Count!=Vm.Project.Connections.Count;
+        bool geometry=scene==null||!ReferenceEquals(indexedProject,Vm.Project)||indexedRevision!=Vm.GeometryRevision||(!HasActiveGesture&&observedSceneRevision!=SceneChanges.Revision(Vm.Project))||scene.Nodes.Count!=Vm.Project.Nodes.Count||connectionsById.Count!=Vm.Project.Connections.Count;
         bool appearance=lastAppearanceRevision!=Vm.AppearanceRevision;lastAppearanceRevision=Vm.AppearanceRevision;
         bool selection=!lastSelection.SetEquals(Vm.Selection)||lastSelectedConnection!=Vm.SelectedConnection?.Id;
         bool filter=lastTypeFilter!=Vm.TypeFilter||lastConfidenceFilter!=Vm.ConfidenceFilter;

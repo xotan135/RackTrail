@@ -2,9 +2,9 @@
 
 ## Verification status
 
-These source changes have **not been compiled, executed, packaged, or pushed**. The user requested manual build practice. No before/after timings, passing-test counts, or FPS claims are available yet. Static review and whitespace checks do not establish runtime correctness.
+These changes were initially left unbuilt for manual build practice. After testing was authorized on 2026-10-25, the Release build passed with no warnings, all **369 core checks** passed, and the native UI checks plus **93 desktop workflow checks** passed. This includes the direct collapse/expand hit-testing regression and detached-snapshot observer isolation. The latest fix has not been packaged or pushed. Before/after performance timings and FPS claims remain unverified.
 
-The project version is 1.12.0; the saved-project format is unchanged. Existing generated binaries are older builds: use the commands below to produce binaries containing these changes.
+The project version is 1.12.0; the saved-project format is unchanged. The Release build under `src/RackTrail.Desktop/bin/Release/net10.0/` includes this fix. Previously generated installer/portable packages may be older: rebuild them only after verification.
 
 ## What changed
 

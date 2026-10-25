@@ -27,7 +27,18 @@ internal static class PerformanceChecks
         node.StackMembers.Add(new() { Name = "Original" });
         node.Classification = new() { Roles = ["Original"], Evidence = [new(EvidenceSource.Inventory, "Original")] };
         project.Connections.Add(new() { Id = "crossing", From = node.Id, To = locked.Id, Route = [new(-1000, 200), new(1000, 200)] });
+        string observedJson=ProjectStorage.Serialize(project);
+        long revision=SceneChanges.Revision(project);
+        check(SceneChanges.Revision(project)==revision&&ProjectStorage.Serialize(project)==observedJson,"Scene observation changes neither revision on reads nor saved project format");
+        container.Collapsed=true;
+        check(SceneChanges.Revision(project)>revision,"Direct container collapse advances scene revision outside view-model commands");
+        revision=SceneChanges.Revision(project);container.Collapsed=true;
+        check(SceneChanges.Revision(project)==revision,"Assigning unchanged scene properties does not invalidate cached geometry");
+        container.Collapsed=false;
         var copy = ProjectSnapshot.Capture(project);
+        revision=SceneChanges.Revision(project);copy.Nodes[0].Collapsed=true;
+        check(SceneChanges.Revision(project)==revision,"Mutating a detached worker snapshot cannot notify observers of the live model");
+        copy.Nodes[0].Collapsed=false;
         node.X = 90; node.StackMembers[0].Name = "Changed"; node.Classification.Roles[0] = "Changed"; project.Connections[0].Route.Clear();
         check(copy.Nodes[1].X == 40 && copy.Nodes[1].StackMembers[0].Name == "Original" && copy.Nodes[1].Classification!.Roles[0] == "Original" && copy.Connections[0].Route.Count == 2,
             "Worker snapshot detaches mutable geometry, inventory, classification and custom routes");

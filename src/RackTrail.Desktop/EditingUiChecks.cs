@@ -13,7 +13,7 @@ internal static class EditingUiChecks
     public static void Run(string directory)
     {
         void Check(bool pass,string label){if(!pass)throw new InvalidOperationException(label);Console.WriteLine("PASS "+label);}
-        var vm=new EditorViewModel();var older=vm.Add(NodeKind.Server,100,100);var newer=vm.Add(NodeKind.Switch,100,100);var canvas=new MapCanvas(vm);
+        var vm=new EditorViewModel();var older=vm.Add(NodeKind.Server,100,100);var newer=vm.Add(NodeKind.Switch,100,100);using var canvas=new MapCanvas(vm);
         Check(canvas.NodeAt(new(120,120))==newer,"New overlapping item receives clicks");
         vm.Select(older);Check(canvas.NodeAt(new(120,120))==newer,"Selection does not silently override explicit layer order");
         vm.ReorderSelection(true);Check(canvas.NodeAt(new(120,120))==older,"Bring to front updates hit testing");
@@ -22,6 +22,9 @@ internal static class EditingUiChecks
         var child=vm.Add(NodeKind.Server,120,170);vm.AssignContainer(child,container.Id);vm.Select(container);vm.ReorderSelection(true);
         Check(canvas.NodeAt(new(130,180))==child,"Raised container does not cover its child");
         container.Collapsed=true;Check(!canvas.PaintOrder().Contains(child),"Collapsed container hides its descendants from hit testing");
+        Check(canvas.NodeAt(new(130,180))!=child,"Direct collapse removes descendants from the spatial hit index");
+        container.Collapsed=false;Check(canvas.PaintOrder().Contains(child)&&canvas.NodeAt(new(130,180))==child,"Direct expansion restores descendant paint order and hit testing");
+        container.Collapsed=true;
         canvas.Measure(new Size(900,600));canvas.Arrange(new Rect(0,0,900,600));canvas.FocusNode(child);
         Check(vm.Visible(child)&&Math.Abs(child.X*canvas.Zoom+canvas.Pan.X+child.Width*canvas.Zoom/2-450)<.01,"Search focus reveals and centers the result");
         canvas.Pan=new(-1800,700);var added=canvas.AddInView(NodeKind.Printer);

@@ -46,7 +46,7 @@ public sealed class MainWindow : Window
     public MainWindow()
     {
         CanResize=true; Title = "RackTrail"; Icon = Branding.CreateIcon();Width = 1500; Height = 940; MinWidth = 1080; MinHeight = 700; FontFamily = new FontFamily("Inter");
-        inventory.ItemsPanel=new Avalonia.Controls.Templates.FuncTemplate<Panel>(()=>new VirtualizingStackPanel());
+        inventory.ItemsPanel=new Avalonia.Controls.Templates.FuncTemplate<Panel?>(()=>new VirtualizingStackPanel());
         inventory.ItemTemplate=new Avalonia.Controls.Templates.FuncDataTemplate<InventoryRow>((row,_)=>{
             if(row==null)return new TextBlock();
             var grid=new Grid{ColumnDefinitions=new("24,*"),Margin=new Thickness(2,4)};

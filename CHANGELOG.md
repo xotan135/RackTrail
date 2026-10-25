@@ -5,7 +5,8 @@
 - Prepare large-map performance improvements: revision-owned background routing, viewport culling, spatial hit testing and coalesced pointer gestures.
 - Reuse route, caption, image and text resources; virtualize the inventory and bound history/cache memory.
 - Move icon loading, autosave and exports to detached background work with cancellation.
-- Add opt-in synthetic-map benchmarks and live interaction profiling; manual build and runtime verification are pending.
+- Add opt-in synthetic-map benchmarks and live interaction profiling; local Release build and core/native checks pass, with performance measurements and packaging verification pending.
+- Invalidate cached scene indexes after direct model-property changes, including container collapse/expansion, while keeping worker snapshots detached from live-model observers.
 
 ## 1.11.1 — 2026-10-23
 
